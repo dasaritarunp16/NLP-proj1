@@ -1,7 +1,7 @@
 import cv2
 import os
 
-def read(video_path, max_frames=200):
+def read(video_path, max_frames=100):
     cap = cv2.VideoCapture(video_path)
     frames = []
     count = 0
@@ -11,7 +11,7 @@ def read(video_path, max_frames=200):
             frames.append(frame)
             count += 1
         else:
-            break
+           break
     cap.release()
     return frames
 
@@ -20,11 +20,11 @@ def save(output_frames, output_path):
         print("No frames to save")
         return
     
-    # Create output directory if it doesn't exist
+
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
     
     height, width = output_frames[0].shape[:2]
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # Changed to mp4v
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_path, fourcc, 24, (width, height))
     
     for frame in output_frames:

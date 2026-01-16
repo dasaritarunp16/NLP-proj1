@@ -1,14 +1,4 @@
-"""
-Tennis Frame Extractor
-Extracts frames from tennis match videos optimized for ball detection training.
 
-Features:
-- Download from YouTube or use local files
-- Motion-based extraction (captures rally moments)
-- Uniform sampling option
-- Duplicate frame filtering
-- Court region focus (optional)
-"""
 
 import cv2
 import numpy as np
@@ -28,7 +18,7 @@ class TennisFrameExtractor:
         print(f"Downloading video from: {url}")
         cmd = [
             "yt-dlp",
-            "-f", "best[height<=720]",  # 720p max for manageable file size
+            "-f", "best[height<=720]",  
             "-o", output_path,
             url
         ]
@@ -45,21 +35,19 @@ class TennisFrameExtractor:
         if prev_frame is None:
             return 0
         
-        # Convert to grayscale
+        
         prev_gray = cv2.cvtColor(prev_frame, cv2.COLOR_BGR2GRAY)
         curr_gray = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2GRAY)
         
-        # Apply Gaussian blur to reduce noise
+       
         prev_gray = cv2.GaussianBlur(prev_gray, (21, 21), 0)
         curr_gray = cv2.GaussianBlur(curr_gray, (21, 21), 0)
         
-        # Compute absolute difference
+       
         frame_diff = cv2.absdiff(prev_gray, curr_gray)
-        
-        # Threshold to get binary motion mask
+      
         _, thresh = cv2.threshold(frame_diff, 25, 255, cv2.THRESH_BINARY)
         
-        # Calculate motion score as percentage of pixels with motion
         motion_score = np.sum(thresh > 0) / thresh.size
         
         return motion_score
@@ -68,16 +56,13 @@ class TennisFrameExtractor:
         """Check if frame is too similar to last saved frame."""
         if last_saved_frame is None:
             return False
-        
-        # Resize for faster comparison
+     
         small_curr = cv2.resize(frame, (64, 64))
         small_last = cv2.resize(last_saved_frame, (64, 64))
-        
-        # Convert to grayscale
+   
         gray_curr = cv2.cvtColor(small_curr, cv2.COLOR_BGR2GRAY)
         gray_last = cv2.cvtColor(small_last, cv2.COLOR_BGR2GRAY)
-        
-        # Compute similarity using normalized correlation
+   
         similarity = cv2.matchTemplate(gray_curr, gray_last, cv2.TM_CCOEFF_NORMED)[0][0]
         
         return similarity > threshold
@@ -87,28 +72,21 @@ class TennisFrameExtractor:
         Attempt to detect the tennis court region.
         Returns a mask or bounding box for the court area.
         """
-        # Convert to HSV for color-based detection
         hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
-        
-        # Tennis courts are typically green, blue, or clay (orange/red)
-        # Green court mask
         green_lower = np.array([35, 40, 40])
         green_upper = np.array([85, 255, 255])
         green_mask = cv2.inRange(hsv, green_lower, green_upper)
-        
-        # Blue court mask (hard courts)
         blue_lower = np.array([90, 40, 40])
         blue_upper = np.array([130, 255, 255])
         blue_mask = cv2.inRange(hsv, blue_lower, blue_upper)
-        
-        # Combine masks
+
         court_mask = cv2.bitwise_or(green_mask, blue_mask)
         
-        # Find contours
+        
         contours, _ = cv2.findContours(court_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         
         if contours:
-            # Get the largest contour (likely the court)
+      
             largest_contour = max(contours, key=cv2.contourArea)
             x, y, w, h = cv2.boundingRect(largest_contour)
             return (x, y, w, h)
@@ -195,11 +173,9 @@ class TennisFrameExtractor:
             ret, frame = cap.read()
             if not ret:
                 break
-            
-            # Compute motion score
+
             motion_score = self.compute_motion_score(prev_frame, frame)
-            
-            # Save frame if enough motion and enough frames since last save
+
             if motion_score > motion_threshold and frames_since_save >= min_interval:
                 if not self.is_duplicate(frame, last_saved_frame):
                     frame_name = f"frame_{frame_count:06d}_motion_{motion_score:.3f}.jpg"
@@ -259,13 +235,12 @@ class TennisFrameExtractor:
             motion_score = self.compute_motion_score(prev_frame, frame)
             should_save = False
             save_reason = ""
-            
-            # Motion-based extraction
+    
             if motion_score > motion_threshold and frames_since_motion_save >= min_interval:
                 should_save = True
                 save_reason = f"motion_{motion_score:.3f}"
                 frames_since_motion_save = 0
-            # Uniform fallback
+          
             elif frames_since_uniform_save >= uniform_interval:
                 should_save = True
                 save_reason = "uniform"
@@ -291,11 +266,7 @@ class TennisFrameExtractor:
         return saved_frames
     
     def extract_with_ball_likelihood(self, video_path, max_frames=500):
-        """
-        Advanced extraction that estimates likelihood of ball being visible.
-        Uses motion patterns typical of tennis ball trajectories.
-        """
-        print("Extracting frames with ball likelihood estimation...")
+  
         
         cap = cv2.VideoCapture(video_path)
         if not cap.isOpened():
@@ -305,8 +276,7 @@ class TennisFrameExtractor:
         fps = cap.get(cv2.CAP_PROP_FPS)
         total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
         print(f"Video: {fps:.1f} FPS, {total_frames} total frames")
-        
-        # First pass: analyze motion patterns
+    
         print("Pass 1: Analyzing motion patterns...")
         motion_scores = []
         frame_count = 0
@@ -324,12 +294,10 @@ class TennisFrameExtractor:
             
             if frame_count % 500 == 0:
                 print(f"Analyzed {frame_count}/{total_frames} frames...")
-        
-        # Find high-motion segments (likely rallies)
+      
         avg_motion = np.mean([s[1] for s in motion_scores])
         rally_threshold = avg_motion * 1.5
-        
-        # Second pass: extract frames from high-motion segments
+
         print(f"Pass 2: Extracting frames (rally threshold: {rally_threshold:.4f})...")
         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
         
@@ -345,11 +313,10 @@ class TennisFrameExtractor:
             ret, frame = cap.read()
             if not ret:
                 continue
-            
-            # Higher extraction rate during rallies
+
             in_rally = score > rally_threshold
             
-            if in_rally and idx % 5 == 0:  # Every 5 frames during rally
+            if in_rally and idx % 5 == 0:
                 if not self.is_duplicate(frame, last_saved_frame):
                     frame_name = f"frame_{idx:06d}_rally.jpg"
                     frame_path = self.output_dir / frame_name
@@ -389,15 +356,13 @@ def main():
     args = parser.parse_args()
     
     extractor = TennisFrameExtractor(output_dir=args.output)
-    
-    # Check if source is URL or file
+
     video_path = args.source
     if args.source.startswith("http"):
         video_path = extractor.download_video(args.source)
         if video_path is None:
             return
-    
-    # Extract frames based on mode
+
     if args.mode == "uniform":
         frames = extractor.extract_frames_uniform(video_path, 
                                                    interval=args.interval,

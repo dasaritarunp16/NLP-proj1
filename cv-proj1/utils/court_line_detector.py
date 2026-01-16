@@ -27,7 +27,7 @@ class CLD:
         keypoints[1::2] *= original_height / 224.0
         return keypoints
 
-    #Plot Keypoints on the image
+ 
     def draw_keypoints(self, image, keypoints):
         for i in range(0, len(keypoints), 2):
             x = int(keypoints[i])
@@ -36,7 +36,6 @@ class CLD:
             cv2.circle(image, (x,y), 5, (0,0,255), -1)
         return image
 
-    #Plot/ Draw keypoints on the video
     def draw_keypoints_on_video(self, video_frames, keypoints):
         output_video_frames = []
         for frame in video_frames:

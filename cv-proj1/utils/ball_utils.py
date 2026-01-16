@@ -7,7 +7,7 @@ class BT:
         self.model = YOLO(model)
         
     def detect_frame(self, frame):
-        results = self.model.track(frame, conf = 0.15,persist= True)[0]
+        results = self.model.track(frame, conf = 0.05,persist= True)[0]
     
         ball_list = {}
         for i in results.boxes:
