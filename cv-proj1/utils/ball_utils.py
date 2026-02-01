@@ -7,7 +7,7 @@ class BT:
         self.model = YOLO(model)
         
     def detect_frame(self, frame):
-        results = self.model.track(frame, conf = 0.05,persist= True)[0]
+        results = self.model.track(frame, conf = 0.15,persist= True)[0]
     
         ball_list = {}
         for i in results.boxes:
@@ -40,4 +40,11 @@ class BT:
                 cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), (0,255,255), 2)
             o_frames.append(frame)
         return o_frames
-            
+    def ball_center(self, box):
+        x1, y1, x2, y2 = box
+        cX = (x1 + x2) / 2
+        cY = (y1 + y2) / 2
+        return cX, cY 
+    
+    def balls_in_court(self, x, y):
+        return (0 <= x <= 23.77) and (0 <= y <= 10.97)

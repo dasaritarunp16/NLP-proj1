@@ -1,7 +1,7 @@
 import cv2
 import os
 
-def read(video_path, max_frames=100):
+def read(video_path, max_frames=300):
     cap = cv2.VideoCapture(video_path)
     frames = []
     count = 0

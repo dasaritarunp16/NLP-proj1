@@ -60,9 +60,33 @@ def main():
         plt.title("Court Keypoints - Numbered")
         plt.show()
     
-    H_points = homography(court_keypoints_reshaped)
+    H_points = homography(court_keypoints_reshaped)[0]
     
     print(f"Homography: {H_points}")
+    
+    landed_balls = []
+    for frame_count, balls in enumerate(b_detect):
+        if 1 in balls:
+            box = balls[1]
+        
+            x,y = ball_tracker.ball_center(box)
+            
+            ball_frame = np.array([[[x,y]]], dtype= np.float32)
+            
+            ball_homography = cv2.perspectiveTransform(ball_frame, H_points)
+            
+           
+            if(ball_tracker.balls_in_court(ball_homography[0][0][0], ball_homography[0][0][1])):
+                landed_balls.append({
+                    'frame' : frame_count,
+                    'x_coord' : ball_homography[0][0][0],
+                    'y_coord' : ball_homography[0][0][1],
+                })
+                
+    
+    
+    print(f"balls_in: {landed_balls}")
+
 
 if __name__ == "__main__":
     main()
