@@ -162,3 +162,11 @@ class CLDH:
         output = self.draw_lines(image, h_lines, v_lines)
         output = self.draw_keypoints(output, keypoints)
         return output
+
+    def draw_keypoints_on_video(self, video_frames, keypoints):
+        """Draw keypoints on all video frames."""
+        output_frames = []
+        for frame in video_frames:
+            frame = self.draw_keypoints(frame, keypoints)
+            output_frames.append(frame)
+        return output_frames
