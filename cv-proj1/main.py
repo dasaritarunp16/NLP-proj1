@@ -69,15 +69,31 @@ def main():
     # Create court zones from keypoints (pixel-space rectangles)
     court_zones = CourtZones(court_keypoints_reshaped)
 
+    # Build pixel-space court boundary polygon from the 4 corner keypoints
+    # kp 0=far-left, 1=far-right, 3=near-right, 2=near-left
+    court_boundary = np.array([
+        court_keypoints_reshaped[0],
+        court_keypoints_reshaped[1],
+        court_keypoints_reshaped[3],
+        court_keypoints_reshaped[2],
+    ], dtype=np.float32).reshape(-1, 1, 2)
+
     # Build list of ball positions in real-world coords per frame
     ball_trajectory = []
     frames_with_ball = 0
     frames_out_of_court = 0
+    frames_outside_pixel_court = 0
     for frame_count, balls in enumerate(b_detect):
         if 1 in balls:
             frames_with_ball += 1
             box = balls[1]
             x, y = ball_tracker.ball_center(box)
+
+            # Filter: ball pixel position must be inside the court polygon
+            if cv2.pointPolygonTest(court_boundary, (float(x), float(y)), False) < 0:
+                frames_outside_pixel_court += 1
+                continue
+
             ball_frame = np.array([[[x, y]]], dtype=np.float32)
             ball_homography = cv2.perspectiveTransform(ball_frame, H_points)
             rx, ry = ball_homography[0][0][0], ball_homography[0][0][1]
@@ -96,7 +112,8 @@ def main():
     print(f"\n--- DEBUG ---")
     print(f"Total frames: {len(b_detect)}")
     print(f"Frames with ball detected: {frames_with_ball}")
-    print(f"Frames out of court (filtered): {frames_out_of_court}")
+    print(f"Frames outside pixel court: {frames_outside_pixel_court}")
+    print(f"Frames out of real court (filtered): {frames_out_of_court}")
     print(f"Frames in court (ball_trajectory): {len(ball_trajectory)}")
     if len(ball_trajectory) > 0:
         print(f"First detection: frame {ball_trajectory[0]['frame']} ({ball_trajectory[0]['rx']:.2f}, {ball_trajectory[0]['ry']:.2f})")
