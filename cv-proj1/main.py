@@ -134,7 +134,13 @@ def main():
     print(f"Frames static (false positive): {frames_static}")
     print(f"Frames outside pixel court: {frames_outside_pixel_court}")
     print(f"Frames out of real court (filtered): {frames_out_of_court}")
-    print(f"Frames in court (ball_trajectory): {len(ball_trajectory)}")
+    print(f"Frames in court (ball_trajectory before sampling): {len(ball_trajectory)}")
+
+    # Sample every Nth point for a cleaner ball path
+    SAMPLE_EVERY = 5
+    ball_trajectory = ball_trajectory[::SAMPLE_EVERY]
+    print(f"Frames after sampling every {SAMPLE_EVERY}: {len(ball_trajectory)}")
+
     if len(ball_trajectory) > 0:
         print(f"First detection: frame {ball_trajectory[0]['frame']} ({ball_trajectory[0]['rx']:.2f}, {ball_trajectory[0]['ry']:.2f})")
         print(f"Last detection: frame {ball_trajectory[-1]['frame']} ({ball_trajectory[-1]['rx']:.2f}, {ball_trajectory[-1]['ry']:.2f})")
