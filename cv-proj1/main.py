@@ -68,11 +68,12 @@ def main():
     # Create court zones from keypoints (pixel-space rectangles)
     court_zones = CourtZones(court_keypoints_reshaped)
 
-    NET_Y = 11.885  # net position in real-world coords
-    prev_side = None  # "far" or "near"
-    net_crossings = []
+    SAMPLE_INTERVAL = 30
+    ball_positions = []
 
     for frame_count, balls in enumerate(b_detect):
+        if frame_count % SAMPLE_INTERVAL != 0:
+            continue
         if 1 in balls:
             box = balls[1]
 
@@ -85,27 +86,19 @@ def main():
             if not ball_tracker.balls_in_court(rx, ry):
                 continue
 
-            # Determine which side of net the ball is on
-            curr_side = "far" if ry <= NET_Y else "near"
-
-            # Detect net crossing
-            if prev_side is not None and curr_side != prev_side:
-                zone = court_zones.classify(x, y)
-                net_crossings.append({
-                    'frame' : frame_count,
-                    'x_coord' : rx,
-                    'y_coord' : ry,
-                    'zone' : zone,
-                    'direction' : f"{prev_side} -> {curr_side}",
-                })
-
-            prev_side = curr_side
+            zone = court_zones.classify(x, y)
+            ball_positions.append({
+                'frame' : frame_count,
+                'x_coord' : rx,
+                'y_coord' : ry,
+                'zone' : zone,
+            })
 
 
 
-    print(f"Net crossings: {len(net_crossings)}")
-    for b in net_crossings:
-        print(f"  Frame {b['frame']}: ({b['x_coord']:.2f}, {b['y_coord']:.2f}) -> {b['zone']} ({b['direction']})")
+    print(f"Ball positions (every {SAMPLE_INTERVAL} frames): {len(ball_positions)}")
+    for b in ball_positions:
+        print(f"  Frame {b['frame']}: ({b['x_coord']:.2f}, {b['y_coord']:.2f}) -> {b['zone']}")
 
 
 if __name__ == "__main__":
