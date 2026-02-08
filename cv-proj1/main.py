@@ -83,11 +83,28 @@ def main():
     frames_with_ball = 0
     frames_out_of_court = 0
     frames_outside_pixel_court = 0
+    frames_static = 0
+    STATIC_THRESHOLD = 10    # pixels - if ball moves less than this, it's "static"
+    STATIC_MAX_COUNT = 3     # consecutive static frames before we start filtering
+    prev_px, prev_py = None, None
+    static_count = 0
     for frame_count, balls in enumerate(b_detect):
         if 1 in balls:
             frames_with_ball += 1
             box = balls[1]
             x, y = ball_tracker.ball_center(box)
+
+            # Filter: reject static false positives (scoreboard, ball basket, etc.)
+            if prev_px is not None:
+                dist = ((x - prev_px)**2 + (y - prev_py)**2)**0.5
+                if dist < STATIC_THRESHOLD:
+                    static_count += 1
+                else:
+                    static_count = 0
+            prev_px, prev_py = x, y
+            if static_count >= STATIC_MAX_COUNT:
+                frames_static += 1
+                continue
 
             # Filter: ball pixel position must be inside the court polygon
             if cv2.pointPolygonTest(court_boundary, (float(x), float(y)), False) < 0:
@@ -112,6 +129,7 @@ def main():
     print(f"\n--- DEBUG ---")
     print(f"Total frames: {len(b_detect)}")
     print(f"Frames with ball detected: {frames_with_ball}")
+    print(f"Frames static (false positive): {frames_static}")
     print(f"Frames outside pixel court: {frames_outside_pixel_court}")
     print(f"Frames out of real court (filtered): {frames_out_of_court}")
     print(f"Frames in court (ball_trajectory): {len(ball_trajectory)}")
