@@ -55,6 +55,36 @@ class CourtZones:
                 return zone_name
         return "out"
 
+    @staticmethod
+    def classify_real(rx, ry):
+        # Classify using real-world coordinates (meters)
+        # Court: x=0-10.97 (width), y=0-23.77 (length)
+        # Net at y=11.885, service lines at y=5.485 and y=18.285
+        # Singles sidelines at x=1.37 and x=9.60, center at x=5.485
+
+        # Clamp to court bounds for classification
+        rx_c = max(0, min(rx, 10.97))
+        ry_c = max(0, min(ry, 23.77))
+
+        # Alleys
+        if rx_c < 1.37:
+            return "left_alley"
+        if rx_c > 9.60:
+            return "right_alley"
+
+        # Deuce (x < 5.485) vs Ad (x >= 5.485)
+        side = "deuce" if rx_c < 5.485 else "ad"
+
+        # Far vs Near and backcourt vs service box
+        if ry_c < 5.485:
+            return f"far_{side}_backcourt"
+        elif ry_c < 11.885:
+            return f"far_{side}_service_box"
+        elif ry_c < 18.285:
+            return f"near_{side}_service_box"
+        else:
+            return f"near_{side}_backcourt"
+
     def draw_zones(self, frame):
         colors = {
             "far_deuce_service_box":  (255, 200, 200),

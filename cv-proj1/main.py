@@ -160,13 +160,13 @@ def main():
         if ratio >= CLEAN_THRESHOLD:
             # Clean one-direction path -> zone of the final point
             last_pt = segment[-1]
-            zone = court_zones.classify(last_pt['px'], last_pt['py'])
+            zone = court_zones.classify_real(last_pt['rx'], last_pt['ry'])
         else:
             # Zig-zaggy path -> zone with most frame points
             zone_counts = {}
             zone_points = {}
             for pt in segment:
-                z = court_zones.classify(pt['px'], pt['py'])
+                z = court_zones.classify_real(pt['rx'], pt['ry'])
                 if z not in zone_counts:
                     zone_counts[z] = 0
                     zone_points[z] = []
