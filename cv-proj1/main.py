@@ -76,16 +76,22 @@ def main():
             ball_homography = cv2.perspectiveTransform(ball_frame, H_points)
 
 
-            if(ball_tracker.balls_in_court(ball_homography[0][0][0], ball_homography[0][0][1])):
+            rx, ry = ball_homography[0][0][0], ball_homography[0][0][1]
+            zone = ball_tracker.classify_shot(rx, ry)
+
+            if zone != "out":
                 landed_balls.append({
                     'frame' : frame_count,
-                    'x_coord' : ball_homography[0][0][0],
-                    'y_coord' : ball_homography[0][0][1],
+                    'x_coord' : rx,
+                    'y_coord' : ry,
+                    'zone' : zone,
                 })
 
 
 
-    print(f"balls_in: {landed_balls}")
+    print(f"Balls landed in court: {len(landed_balls)}")
+    for b in landed_balls:
+        print(f"  Frame {b['frame']}: ({b['x_coord']:.2f}, {b['y_coord']:.2f}) -> {b['zone']}")
 
 
 if __name__ == "__main__":

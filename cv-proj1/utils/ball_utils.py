@@ -48,3 +48,62 @@ class BT:
     
     def balls_in_court(self, x, y):
         return (0 <= x <= 10.97) and (0 <= y <= 23.77)
+
+    def classify_shot(self, x, y):
+        # Court dimensions (meters)
+        # x: 0 = left doubles sideline, 10.97 = right doubles sideline
+        # y: 0 = far baseline, 23.77 = near baseline
+        #
+        # Key lines:
+        #   Left doubles sideline:  x = 0
+        #   Left singles sideline:  x = 1.37
+        #   Center line:            x = 5.485
+        #   Right singles sideline: x = 9.60
+        #   Right doubles sideline: x = 10.97
+        #
+        #   Far baseline:           y = 0
+        #   Far service line:       y = 5.485
+        #   Net:                    y = 11.885
+        #   Near service line:      y = 18.285
+        #   Near baseline:          y = 23.77
+
+        if not self.balls_in_court(x, y):
+            return "out"
+
+        # Which side of net
+        if y <= 11.885:
+            side = "far"
+        else:
+            side = "near"
+
+        # Doubles alley check
+        if x < 1.37 or x > 9.60:
+            return f"{side}_alley"
+
+        # Service box (between service line and net)
+        if 5.485 <= y <= 11.885:
+            # Far side service boxes
+            if x < 5.485:
+                return "far_deuce_service_box"
+            else:
+                return "far_ad_service_box"
+        elif 11.885 < y <= 18.285:
+            # Near side service boxes
+            if x < 5.485:
+                return "near_ad_service_box"
+            else:
+                return "near_deuce_service_box"
+
+        # Backcourt (between baseline and service line)
+        if y < 5.485:
+            # Far backcourt
+            if x < 5.485:
+                return "far_deuce_backcourt"
+            else:
+                return "far_ad_backcourt"
+        else:
+            # Near backcourt (y > 18.285)
+            if x < 5.485:
+                return "near_ad_backcourt"
+            else:
+                return "near_deuce_backcourt"
