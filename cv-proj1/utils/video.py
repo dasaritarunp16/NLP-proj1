@@ -1,8 +1,10 @@
 import cv2
 import os
 
-def read(video_path, max_frames=300):
+def read(video_path, max_frames=300, start_time=0):
     cap = cv2.VideoCapture(video_path)
+    if start_time > 0:
+        cap.set(cv2.CAP_PROP_POS_MSEC, start_time * 1000)
     frames = []
     count = 0
     while count < max_frames:

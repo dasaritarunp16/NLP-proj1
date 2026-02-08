@@ -10,7 +10,7 @@ from utils.court_visualizer import CourtVisualizer
 
 def main():
     input = "test_video.mp4"
-    vid_frames = read(input)
+    vid_frames = read(input, start_time=125)  # start at 2:05
 
     Player_tracker = PT(model = "yolo12n.pt")
 
