@@ -89,6 +89,9 @@ def main():
     # Detect direction reversals in y (ball was hit back)
     # When ry stops increasing and starts decreasing (or vice versa),
     # the ball has reached its destination — that's the shot landing spot.
+    MIN_FRAME_GAP = 25       # minimum frames between shots
+    MIN_Y_DISTANCE = 3.0     # minimum meters traveled in y to count as a real shot
+
     shot_landings = []
     for i in range(1, len(ball_trajectory) - 1):
         prev_ry = ball_trajectory[i - 1]['ry']
@@ -102,8 +105,14 @@ def main():
 
         if is_peak or is_valley:
             # Skip if too close to last detected shot
-            if len(shot_landings) > 0 and ball_trajectory[i]['frame'] - shot_landings[-1]['frame'] < 15:
+            if len(shot_landings) > 0 and ball_trajectory[i]['frame'] - shot_landings[-1]['frame'] < MIN_FRAME_GAP:
                 continue
+
+            # Skip if ball hasn't traveled enough in y since last shot
+            if len(shot_landings) > 0:
+                y_dist = abs(curr_ry - shot_landings[-1]['y_coord'])
+                if y_dist < MIN_Y_DISTANCE:
+                    continue
 
             zone = court_zones.classify(ball_trajectory[i]['px'], ball_trajectory[i]['py'])
             shot_landings.append({
