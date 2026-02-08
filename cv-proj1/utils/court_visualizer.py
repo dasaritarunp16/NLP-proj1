@@ -73,32 +73,33 @@ class CourtVisualizer:
             cv2.imwrite(output_path, img)
             return img
 
-        # Draw trajectory line connecting consecutive positions
-        for i in range(1, len(ball_trajectory)):
-            pt1 = self._to_px(ball_trajectory[i-1]['rx'], ball_trajectory[i-1]['ry'])
-            pt2 = self._to_px(ball_trajectory[i]['rx'], ball_trajectory[i]['ry'])
-            # Color fades from blue (start) to red (end)
-            t = i / len(ball_trajectory)
-            color = (int(255 * (1 - t)), 50, int(255 * t))
-            cv2.line(img, pt1, pt2, color, 1)
+        # Sample every 5th point to reduce clutter
+        sampled = ball_trajectory[::5]
 
-        # Draw ball positions as dots with frame numbers
-        for i, pos in enumerate(ball_trajectory):
-            px, py = self._to_px(pos['rx'], pos['ry'])
-            t = i / len(ball_trajectory)
+        # Draw trajectory lines connecting sampled positions
+        for i in range(1, len(sampled)):
+            pt1 = self._to_px(sampled[i-1]['rx'], sampled[i-1]['ry'])
+            pt2 = self._to_px(sampled[i]['rx'], sampled[i]['ry'])
+            t = i / len(sampled)
             color = (int(255 * (1 - t)), 50, int(255 * t))
-            cv2.circle(img, (px, py), 3, color, -1)
-            # Label every dot with its frame number
-            cv2.putText(img, str(pos['frame']), (px+5, py-5),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255), 1)
+            cv2.line(img, pt1, pt2, color, 2)
+
+        # Draw sampled positions as dots with frame numbers
+        for i, pos in enumerate(sampled):
+            px, py = self._to_px(pos['rx'], pos['ry'])
+            t = i / len(sampled)
+            color = (int(255 * (1 - t)), 50, int(255 * t))
+            cv2.circle(img, (px, py), 5, color, -1)
+            cv2.putText(img, str(pos['frame']), (px+8, py-8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1)
 
         # Mark start and end
-        start = self._to_px(ball_trajectory[0]['rx'], ball_trajectory[0]['ry'])
-        end = self._to_px(ball_trajectory[-1]['rx'], ball_trajectory[-1]['ry'])
-        cv2.circle(img, start, 8, (255, 0, 0), -1)  # blue = start
-        cv2.putText(img, "START", (start[0]+10, start[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
-        cv2.circle(img, end, 8, (0, 0, 255), -1)  # red = end
-        cv2.putText(img, "END", (end[0]+10, end[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (255, 255, 255), 1)
+        start = self._to_px(sampled[0]['rx'], sampled[0]['ry'])
+        end = self._to_px(sampled[-1]['rx'], sampled[-1]['ry'])
+        cv2.circle(img, start, 10, (255, 0, 0), -1)
+        cv2.putText(img, "START", (start[0]+12, start[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+        cv2.circle(img, end, 10, (0, 0, 255), -1)
+        cv2.putText(img, "END", (end[0]+12, end[1]), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
 
         cv2.imwrite(output_path, img)
         print(f"Court trajectory saved to {output_path}")
