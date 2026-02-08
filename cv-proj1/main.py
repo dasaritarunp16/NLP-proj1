@@ -71,8 +71,11 @@ def main():
 
     # Build list of ball positions in real-world coords per frame
     ball_trajectory = []
+    frames_with_ball = 0
+    frames_out_of_court = 0
     for frame_count, balls in enumerate(b_detect):
         if 1 in balls:
+            frames_with_ball += 1
             box = balls[1]
             x, y = ball_tracker.ball_center(box)
             ball_frame = np.array([[[x, y]]], dtype=np.float32)
@@ -85,6 +88,18 @@ def main():
                     'px': x, 'py': y,
                     'rx': rx, 'ry': ry,
                 })
+            else:
+                frames_out_of_court += 1
+
+    print(f"\n--- DEBUG ---")
+    print(f"Total frames: {len(b_detect)}")
+    print(f"Frames with ball detected: {frames_with_ball}")
+    print(f"Frames out of court (filtered): {frames_out_of_court}")
+    print(f"Frames in court (ball_trajectory): {len(ball_trajectory)}")
+    if len(ball_trajectory) > 0:
+        print(f"First detection: frame {ball_trajectory[0]['frame']} ({ball_trajectory[0]['rx']:.2f}, {ball_trajectory[0]['ry']:.2f})")
+        print(f"Last detection: frame {ball_trajectory[-1]['frame']} ({ball_trajectory[-1]['rx']:.2f}, {ball_trajectory[-1]['ry']:.2f})")
+    print(f"--- END DEBUG ---\n")
 
     # --- Shot detection via direction reversals + path classification ---
     MIN_FRAME_GAP = 25       # minimum frames between reversal points
