@@ -86,45 +86,116 @@ def main():
                     'rx': rx, 'ry': ry,
                 })
 
-    # Detect direction reversals in y (ball was hit back)
-    # When ry stops increasing and starts decreasing (or vice versa),
-    # the ball has reached its destination — that's the shot landing spot.
-    MIN_FRAME_GAP = 25       # minimum frames between shots
-    MIN_Y_DISTANCE = 3.0     # minimum meters traveled in y to count as a real shot
+    # --- Shot detection via direction reversals + path classification ---
+    MIN_FRAME_GAP = 25       # minimum frames between reversal points
+    MIN_Y_DISTANCE = 3.0     # minimum y-distance between reversal points
+    BACKWARD_THRESHOLD = 0.3 # path efficiency below this = backward loop (noise)
+    CLEAN_THRESHOLD = 0.7    # path efficiency above this = clean one-direction shot
 
-    shot_landings = []
+    # Step 1: Find reversal indices (local peaks/valleys in ry)
+    reversal_indices = []
     for i in range(1, len(ball_trajectory) - 1):
         prev_ry = ball_trajectory[i - 1]['ry']
         curr_ry = ball_trajectory[i]['ry']
         next_ry = ball_trajectory[i + 1]['ry']
 
-        # Local max in ry (ball reached near side, now heading back)
-        # or local min in ry (ball reached far side, now heading back)
         is_peak = curr_ry > prev_ry and curr_ry > next_ry
         is_valley = curr_ry < prev_ry and curr_ry < next_ry
 
         if is_peak or is_valley:
-            # Skip if too close to last detected shot
-            if len(shot_landings) > 0 and ball_trajectory[i]['frame'] - shot_landings[-1]['frame'] < MIN_FRAME_GAP:
-                continue
-
-            # Skip if ball hasn't traveled enough in y since last shot
-            if len(shot_landings) > 0:
-                y_dist = abs(curr_ry - shot_landings[-1]['y_coord'])
-                if y_dist < MIN_Y_DISTANCE:
+            if len(reversal_indices) > 0:
+                last_rev = reversal_indices[-1]
+                if ball_trajectory[i]['frame'] - ball_trajectory[last_rev]['frame'] < MIN_FRAME_GAP:
                     continue
+                if abs(curr_ry - ball_trajectory[last_rev]['ry']) < MIN_Y_DISTANCE:
+                    continue
+            reversal_indices.append(i)
 
-            zone = court_zones.classify(ball_trajectory[i]['px'], ball_trajectory[i]['py'])
-            shot_landings.append({
-                'frame': ball_trajectory[i]['frame'],
-                'x_coord': ball_trajectory[i]['rx'],
-                'y_coord': ball_trajectory[i]['ry'],
-                'zone': zone,
-            })
+    # Step 2: Build shot segments between consecutive reversals
+    boundaries = [0] + reversal_indices + [len(ball_trajectory) - 1]
+    shot_landings = []
 
-    print(f"Shots detected: {len(shot_landings)}")
-    for b in shot_landings:
-        print(f"  Frame {b['frame']}: ({b['x_coord']:.2f}, {b['y_coord']:.2f}) -> {b['zone']}")
+    for seg_idx in range(len(boundaries) - 1):
+        start_idx = boundaries[seg_idx]
+        end_idx = boundaries[seg_idx + 1]
+        segment = ball_trajectory[start_idx:end_idx + 1]
+
+        if len(segment) < 3:
+            continue
+
+        # Step 3: Compute path efficiency = net_y / total_y
+        start_ry = segment[0]['ry']
+        end_ry = segment[-1]['ry']
+        net_y = abs(end_ry - start_ry)
+        total_y = sum(abs(segment[j+1]['ry'] - segment[j]['ry']) for j in range(len(segment) - 1))
+
+        if total_y == 0:
+            continue
+
+        ratio = net_y / total_y
+
+        # Backward path (loops back on itself) -> discard as noise
+        if ratio < BACKWARD_THRESHOLD:
+            print(f"  Segment {seg_idx+1} (frames {segment[0]['frame']}-{segment[-1]['frame']}): DISCARDED (backward, ratio={ratio:.2f})")
+            continue
+
+        # Step 4: Classify landing zone based on path shape
+        if ratio >= CLEAN_THRESHOLD:
+            # Clean one-direction path -> zone of the final point
+            last_pt = segment[-1]
+            zone = court_zones.classify(last_pt['px'], last_pt['py'])
+        else:
+            # Zig-zaggy path -> zone with most frame points
+            zone_counts = {}
+            zone_points = {}
+            for pt in segment:
+                z = court_zones.classify(pt['px'], pt['py'])
+                if z not in zone_counts:
+                    zone_counts[z] = 0
+                    zone_points[z] = []
+                zone_counts[z] += 1
+                zone_points[z].append((pt['rx'], pt['ry']))
+
+            max_count = max(zone_counts.values())
+            # Zones within 80% of the max count are "tied"
+            top_zones = [z for z, c in zone_counts.items() if c >= max_count * 0.8]
+
+            if len(top_zones) == 1:
+                zone = top_zones[0]
+            else:
+                # Tiebreak: zone where points are closest to each other (most clustered)
+                best_zone = top_zones[0]
+                best_density = float('inf')
+                for z in top_zones:
+                    pts = zone_points[z]
+                    if len(pts) < 2:
+                        avg_dist = 0
+                    else:
+                        total_dist = 0
+                        count = 0
+                        for a in range(len(pts)):
+                            for b in range(a + 1, len(pts)):
+                                total_dist += ((pts[a][0] - pts[b][0])**2 + (pts[a][1] - pts[b][1])**2)**0.5
+                                count += 1
+                        avg_dist = total_dist / count
+                    if avg_dist < best_density:
+                        best_density = avg_dist
+                        best_zone = z
+                zone = best_zone
+
+            last_pt = segment[-1]
+
+        shot_landings.append({
+            'frame': last_pt['frame'],
+            'x_coord': last_pt['rx'],
+            'y_coord': last_pt['ry'],
+            'zone': zone,
+            'path_ratio': ratio,
+        })
+
+    print(f"\nShots detected: {len(shot_landings)}")
+    for idx, b in enumerate(shot_landings):
+        print(f"  Shot {idx+1} - Frame {b['frame']}: ({b['x_coord']:.2f}, {b['y_coord']:.2f}) -> {b['zone']} (ratio={b['path_ratio']:.2f})")
 
     # Visualize ball trajectory on 2D court
     visualizer = CourtVisualizer()
