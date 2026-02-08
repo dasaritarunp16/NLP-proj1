@@ -5,6 +5,7 @@ from utils.ball_utils import BT
 from utils.court_line_detector import CLD
 from utils.homography import homography
 from utils.court_zones import CourtZones
+from utils.court_visualizer import CourtVisualizer
 
 
 def main():
@@ -115,6 +116,10 @@ def main():
     print(f"Shots detected: {len(shot_landings)}")
     for b in shot_landings:
         print(f"  Frame {b['frame']}: ({b['x_coord']:.2f}, {b['y_coord']:.2f}) -> {b['zone']}")
+
+    # Visualize ball trajectory on 2D court
+    visualizer = CourtVisualizer()
+    visualizer.plot_trajectory(ball_trajectory)
 
 
 if __name__ == "__main__":
