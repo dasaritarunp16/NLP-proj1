@@ -68,34 +68,44 @@ def main():
     # Create court zones from keypoints (pixel-space rectangles)
     court_zones = CourtZones(court_keypoints_reshaped)
 
-    landed_balls = []
+    NET_Y = 11.885  # net position in real-world coords
+    prev_side = None  # "far" or "near"
+    net_crossings = []
+
     for frame_count, balls in enumerate(b_detect):
         if 1 in balls:
             box = balls[1]
 
             x,y = ball_tracker.ball_center(box)
 
-            # Classify zone directly in pixel space
-            zone = court_zones.classify(x, y)
-
             ball_frame = np.array([[[x,y]]], dtype= np.float32)
-
             ball_homography = cv2.perspectiveTransform(ball_frame, H_points)
+            rx, ry = ball_homography[0][0][0], ball_homography[0][0][1]
 
+            if not ball_tracker.balls_in_court(rx, ry):
+                continue
 
-            if(ball_tracker.balls_in_court(ball_homography[0][0][0], ball_homography[0][0][1])):
-                landed_balls.append({
+            # Determine which side of net the ball is on
+            curr_side = "far" if ry <= NET_Y else "near"
+
+            # Detect net crossing
+            if prev_side is not None and curr_side != prev_side:
+                zone = court_zones.classify(x, y)
+                net_crossings.append({
                     'frame' : frame_count,
-                    'x_coord' : ball_homography[0][0][0],
-                    'y_coord' : ball_homography[0][0][1],
+                    'x_coord' : rx,
+                    'y_coord' : ry,
                     'zone' : zone,
+                    'direction' : f"{prev_side} -> {curr_side}",
                 })
 
+            prev_side = curr_side
 
 
-    print(f"balls_in:")
-    for b in landed_balls:
-        print(f"  Frame {b['frame']}: ({b['x_coord']:.2f}, {b['y_coord']:.2f}) -> {b['zone']}")
+
+    print(f"Net crossings: {len(net_crossings)}")
+    for b in net_crossings:
+        print(f"  Frame {b['frame']}: ({b['x_coord']:.2f}, {b['y_coord']:.2f}) -> {b['zone']} ({b['direction']})")
 
 
 if __name__ == "__main__":
