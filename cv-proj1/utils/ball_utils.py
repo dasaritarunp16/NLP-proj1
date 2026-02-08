@@ -47,4 +47,4 @@ class BT:
         return cX, cY 
     
     def balls_in_court(self, x, y):
-        return (0 <= x <= 23.77) and (0 <= y <= 10.97)
+        return (0 <= x <= 10.97) and (0 <= y <= 23.77)
