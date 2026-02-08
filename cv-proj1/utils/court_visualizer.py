@@ -82,12 +82,15 @@ class CourtVisualizer:
             color = (int(255 * (1 - t)), 50, int(255 * t))
             cv2.line(img, pt1, pt2, color, 1)
 
-        # Draw ball positions as dots
+        # Draw ball positions as dots with frame numbers
         for i, pos in enumerate(ball_trajectory):
             px, py = self._to_px(pos['rx'], pos['ry'])
             t = i / len(ball_trajectory)
             color = (int(255 * (1 - t)), 50, int(255 * t))
             cv2.circle(img, (px, py), 3, color, -1)
+            # Label every dot with its frame number
+            cv2.putText(img, str(pos['frame']), (px+5, py-5),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255), 1)
 
         # Mark start and end
         start = self._to_px(ball_trajectory[0]['rx'], ball_trajectory[0]['ry'])
