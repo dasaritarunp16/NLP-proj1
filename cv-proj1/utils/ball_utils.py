@@ -46,5 +46,5 @@ class BT:
         cY = (y1 + y2) / 2
         return cX, cY
 
-    def balls_in_court(self, x, y):
-        return (0 <= x <= 10.97) and (0 <= y <= 23.77)
+    def balls_in_court(self, x, y, margin=3.0):
+        return (-margin <= x <= 10.97 + margin) and (-margin <= y <= 23.77 + margin)
