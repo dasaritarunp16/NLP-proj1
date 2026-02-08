@@ -2,6 +2,7 @@
 from utils.video import read, save
 from utils.player_utils import PT
 from utils.ball_utils import BT
+from utils.ball_tracker_tracknet import BallTrackerTN
 from utils.court_line_detector import CLD
 from utils.homography import homography
 from utils.court_zones import CourtZones
@@ -16,7 +17,8 @@ def main():
 
     p_detect = Player_tracker.detect_frames(vid_frames)
 
-    ball_tracker = BT(model = "tennis_ball_best.pt")
+    # Use TrackNet for ball detection (3-frame context, specialized for broadcast tennis)
+    ball_tracker = BallTrackerTN(model_path="tracknet_weights.pt")
 
     court_model_path = "keypoints_model_50.pth"
     court_line_detector = CLD(court_model_path)
