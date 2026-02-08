@@ -4,6 +4,7 @@ from utils.player_utils import PT
 from utils.ball_utils import BT
 from utils.court_line_detector import CLD
 from utils.homography import homography
+from utils.court_zones import CourtZones
 
 
 def main():
@@ -64,12 +65,18 @@ def main():
 
     print(f"Homography: {H_points}")
 
+    # Create court zones from keypoints (pixel-space rectangles)
+    court_zones = CourtZones(court_keypoints_reshaped)
+
     landed_balls = []
     for frame_count, balls in enumerate(b_detect):
         if 1 in balls:
             box = balls[1]
 
             x,y = ball_tracker.ball_center(box)
+
+            # Classify zone directly in pixel space
+            zone = court_zones.classify(x, y)
 
             ball_frame = np.array([[[x,y]]], dtype= np.float32)
 
@@ -81,11 +88,14 @@ def main():
                     'frame' : frame_count,
                     'x_coord' : ball_homography[0][0][0],
                     'y_coord' : ball_homography[0][0][1],
+                    'zone' : zone,
                 })
 
 
 
-    print(f"balls_in: {landed_balls}")
+    print(f"balls_in:")
+    for b in landed_balls:
+        print(f"  Frame {b['frame']}: ({b['x_coord']:.2f}, {b['y_coord']:.2f}) -> {b['zone']}")
 
 
 if __name__ == "__main__":
