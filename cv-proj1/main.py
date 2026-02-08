@@ -68,36 +68,52 @@ def main():
     # Create court zones from keypoints (pixel-space rectangles)
     court_zones = CourtZones(court_keypoints_reshaped)
 
-    SAMPLE_INTERVAL = 30
-    ball_positions = []
-
+    # Build list of ball positions in real-world coords per frame
+    ball_trajectory = []
     for frame_count, balls in enumerate(b_detect):
-        if frame_count % SAMPLE_INTERVAL != 0:
-            continue
         if 1 in balls:
             box = balls[1]
-
-            x,y = ball_tracker.ball_center(box)
-
-            ball_frame = np.array([[[x,y]]], dtype= np.float32)
+            x, y = ball_tracker.ball_center(box)
+            ball_frame = np.array([[[x, y]]], dtype=np.float32)
             ball_homography = cv2.perspectiveTransform(ball_frame, H_points)
             rx, ry = ball_homography[0][0][0], ball_homography[0][0][1]
 
-            if not ball_tracker.balls_in_court(rx, ry):
+            if ball_tracker.balls_in_court(rx, ry):
+                ball_trajectory.append({
+                    'frame': frame_count,
+                    'px': x, 'py': y,
+                    'rx': rx, 'ry': ry,
+                })
+
+    # Detect direction reversals in y (ball was hit back)
+    # When ry stops increasing and starts decreasing (or vice versa),
+    # the ball has reached its destination — that's the shot landing spot.
+    shot_landings = []
+    for i in range(1, len(ball_trajectory) - 1):
+        prev_ry = ball_trajectory[i - 1]['ry']
+        curr_ry = ball_trajectory[i]['ry']
+        next_ry = ball_trajectory[i + 1]['ry']
+
+        # Local max in ry (ball reached near side, now heading back)
+        # or local min in ry (ball reached far side, now heading back)
+        is_peak = curr_ry > prev_ry and curr_ry > next_ry
+        is_valley = curr_ry < prev_ry and curr_ry < next_ry
+
+        if is_peak or is_valley:
+            # Skip if too close to last detected shot
+            if len(shot_landings) > 0 and ball_trajectory[i]['frame'] - shot_landings[-1]['frame'] < 15:
                 continue
 
-            zone = court_zones.classify(x, y)
-            ball_positions.append({
-                'frame' : frame_count,
-                'x_coord' : rx,
-                'y_coord' : ry,
-                'zone' : zone,
+            zone = court_zones.classify(ball_trajectory[i]['px'], ball_trajectory[i]['py'])
+            shot_landings.append({
+                'frame': ball_trajectory[i]['frame'],
+                'x_coord': ball_trajectory[i]['rx'],
+                'y_coord': ball_trajectory[i]['ry'],
+                'zone': zone,
             })
 
-
-
-    print(f"Ball positions (every {SAMPLE_INTERVAL} frames): {len(ball_positions)}")
-    for b in ball_positions:
+    print(f"Shots detected: {len(shot_landings)}")
+    for b in shot_landings:
         print(f"  Frame {b['frame']}: ({b['x_coord']:.2f}, {b['y_coord']:.2f}) -> {b['zone']}")
 
 
