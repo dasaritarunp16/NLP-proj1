@@ -93,6 +93,21 @@ def main():
     for b in landed_balls:
         print(f"  Frame {b['frame']}: ({b['x_coord']:.2f}, {b['y_coord']:.2f}) -> {b['zone']}")
 
+    # Detect bounces and map them to court zones
+    bounces = ball_tracker.detect_bounces(b_detect)
+    print(f"\nBounces detected: {len(bounces)}")
+    for bounce in bounces:
+        f = bounce['frame']
+        # Find the court position for this bounce frame
+        if 1 in b_detect[f]:
+            box = b_detect[f][1]
+            bx, by = ball_tracker.ball_center(box)
+            ball_frame = np.array([[[bx, by]]], dtype=np.float32)
+            ball_h = cv2.perspectiveTransform(ball_frame, H_points)
+            rx, ry = ball_h[0][0][0], ball_h[0][0][1]
+            zone = ball_tracker.classify_shot(rx, ry)
+            print(f"  Bounce at frame {f}: ({rx:.2f}, {ry:.2f}) -> {zone}")
+
 
 if __name__ == "__main__":
     main()

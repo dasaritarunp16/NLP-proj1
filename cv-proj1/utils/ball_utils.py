@@ -1,5 +1,6 @@
 import cv2
 import pickle
+import numpy as np
 from ultralytics import YOLO
 
 class BT:
@@ -107,3 +108,37 @@ class BT:
                 return "near_ad_backcourt"
             else:
                 return "near_deuce_backcourt"
+
+    def detect_bounces(self, b_detect, min_frames_between=5):
+        # Extract ball pixel y-positions (bottom of bounding box = closest to ground)
+        # When ball bounces, its pixel y reaches a local maximum (lowest point in image)
+        positions = []
+        for frame_idx, balls in enumerate(b_detect):
+            if 1 in balls:
+                box = balls[1]
+                _, bottom_y = self.ball_center(box)
+                positions.append((frame_idx, bottom_y))
+
+        if len(positions) < 3:
+            return []
+
+        bounces = []
+        for i in range(1, len(positions) - 1):
+            prev_frame, prev_y = positions[i - 1]
+            curr_frame, curr_y = positions[i]
+            next_frame, next_y = positions[i + 1]
+
+            # Skip if frames are too far apart (ball lost tracking)
+            if curr_frame - prev_frame > 5 or next_frame - curr_frame > 5:
+                continue
+
+            # Local maximum in pixel y = ball at lowest point = bounce
+            if curr_y > prev_y and curr_y > next_y:
+                # Check minimum distance from last bounce
+                if len(bounces) == 0 or curr_frame - bounces[-1]['frame'] >= min_frames_between:
+                    bounces.append({
+                        'frame': curr_frame,
+                        'pixel_y': curr_y,
+                    })
+
+        return bounces
