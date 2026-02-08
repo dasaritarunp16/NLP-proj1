@@ -89,25 +89,14 @@ def main():
     # Detect direction reversals in y (ball was hit back)
     # When ry stops increasing and starts decreasing (or vice versa),
     # the ball has reached its destination — that's the shot landing spot.
-    MIN_FRAME_GAP = 40       # minimum frames between shots
-    MIN_Y_DISTANCE = 5.0     # minimum meters traveled in y to count as a real shot
-    SMOOTH_WINDOW = 5        # moving average window for smoothing y-coords
-    MIN_TAIL_POINTS = 10     # minimum trajectory points after last shot
-
-    # Smooth the y-coordinates with a moving average to reduce noise
-    smoothed_ry = []
-    for i in range(len(ball_trajectory)):
-        half = SMOOTH_WINDOW // 2
-        start = max(0, i - half)
-        end = min(len(ball_trajectory), i + half + 1)
-        avg_ry = sum(p['ry'] for p in ball_trajectory[start:end]) / (end - start)
-        smoothed_ry.append(avg_ry)
+    MIN_FRAME_GAP = 25       # minimum frames between shots
+    MIN_Y_DISTANCE = 3.0     # minimum meters traveled in y to count as a real shot
 
     shot_landings = []
     for i in range(1, len(ball_trajectory) - 1):
-        prev_ry = smoothed_ry[i - 1]
-        curr_ry = smoothed_ry[i]
-        next_ry = smoothed_ry[i + 1]
+        prev_ry = ball_trajectory[i - 1]['ry']
+        curr_ry = ball_trajectory[i]['ry']
+        next_ry = ball_trajectory[i + 1]['ry']
 
         # Local max in ry (ball reached near side, now heading back)
         # or local min in ry (ball reached far side, now heading back)
@@ -132,13 +121,6 @@ def main():
                 'y_coord': ball_trajectory[i]['ry'],
                 'zone': zone,
             })
-
-    # Remove last shot if not enough trajectory data follows it (incomplete shot)
-    if len(shot_landings) > 0 and len(ball_trajectory) > 0:
-        last_shot_frame = shot_landings[-1]['frame']
-        tail_points = sum(1 for p in ball_trajectory if p['frame'] > last_shot_frame)
-        if tail_points < MIN_TAIL_POINTS:
-            shot_landings.pop()
 
     print(f"Shots detected: {len(shot_landings)}")
     for b in shot_landings:
