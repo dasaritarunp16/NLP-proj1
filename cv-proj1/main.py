@@ -120,6 +120,7 @@ def main():
     # Visualize ball trajectory on 2D court
     visualizer = CourtVisualizer()
     visualizer.plot_trajectory(ball_trajectory)
+    visualizer.plot_shots(ball_trajectory, shot_landings)
 
 
 if __name__ == "__main__":

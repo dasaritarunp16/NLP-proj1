@@ -104,3 +104,66 @@ class CourtVisualizer:
         cv2.imwrite(output_path, img)
         print(f"Court trajectory saved to {output_path}")
         return img
+
+    def plot_shots(self, ball_trajectory, shot_landings, output_dir="output_video"):
+        # Generate one court image per shot
+        # Split trajectory at each direction reversal (shot landing)
+        import os
+        os.makedirs(output_dir, exist_ok=True)
+
+        if len(shot_landings) == 0:
+            return
+
+        # Build frame ranges for each shot
+        # Shot i goes from shot_landings[i-1] to shot_landings[i]
+        landing_frames = [s['frame'] for s in shot_landings]
+
+        shot_segments = []
+        for i in range(len(landing_frames)):
+            if i == 0:
+                start_frame = ball_trajectory[0]['frame'] if ball_trajectory else 0
+            else:
+                start_frame = landing_frames[i - 1]
+            end_frame = landing_frames[i]
+            segment = [p for p in ball_trajectory if start_frame <= p['frame'] <= end_frame]
+            if len(segment) > 0:
+                shot_segments.append(segment)
+
+        shot_color = (0, 200, 255)  # yellow
+
+        for shot_num, segment in enumerate(shot_segments):
+            img = self.draw_court()
+
+            # Draw trajectory for this shot
+            for i in range(1, len(segment)):
+                pt1 = self._to_px(segment[i-1]['rx'], segment[i-1]['ry'])
+                pt2 = self._to_px(segment[i]['rx'], segment[i]['ry'])
+                cv2.line(img, pt1, pt2, shot_color, 2)
+
+            # Draw dots with frame numbers
+            for pos in segment:
+                px, py = self._to_px(pos['rx'], pos['ry'])
+                cv2.circle(img, (px, py), 4, shot_color, -1)
+                cv2.putText(img, str(pos['frame']), (px+6, py-6),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 255, 255), 1)
+
+            # Mark start of shot
+            start_pt = self._to_px(segment[0]['rx'], segment[0]['ry'])
+            cv2.circle(img, start_pt, 8, (255, 0, 0), -1)
+
+            # Mark landing (end of shot)
+            end_pt = self._to_px(segment[-1]['rx'], segment[-1]['ry'])
+            cv2.circle(img, end_pt, 8, (0, 0, 255), -1)
+
+            # Arrow from start to end
+            cv2.arrowedLine(img, start_pt, end_pt, (255, 255, 255), 1, tipLength=0.05)
+
+            # Label
+            cv2.putText(img, f"Shot {shot_num + 1}", (self.margin, 25),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            cv2.putText(img, f"Frames {segment[0]['frame']}-{segment[-1]['frame']}", (self.margin, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
+
+            path = f"{output_dir}/shot_{shot_num + 1}.png"
+            cv2.imwrite(path, img)
+            print(f"  Shot {shot_num + 1} saved to {path}")
