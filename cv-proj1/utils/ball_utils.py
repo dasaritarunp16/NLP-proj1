@@ -142,3 +142,66 @@ class BT:
                     })
 
         return bounces
+
+    def detect_hits(self, b_detect, speed_threshold=2.0, min_frames_between=10):
+        # Detect when the ball is hit by a player
+        # At moment of contact, the ball's velocity changes drastically:
+        # - sudden speed spike (ball accelerates off the racket)
+        # - sharp direction change (ball reverses or changes angle)
+        #
+        # We track pixel-space positions and compute speed between frames.
+        # A hit is detected when speed jumps significantly compared to
+        # the average speed in surrounding frames.
+
+        positions = []
+        for frame_idx, balls in enumerate(b_detect):
+            if 1 in balls:
+                box = balls[1]
+                cx, cy = self.ball_center(box)
+                positions.append((frame_idx, cx, cy))
+
+        if len(positions) < 5:
+            return []
+
+        # Compute speeds between consecutive detected positions
+        speeds = []
+        for i in range(1, len(positions)):
+            prev_frame, prev_x, prev_y = positions[i - 1]
+            curr_frame, curr_x, curr_y = positions[i]
+
+            frame_gap = curr_frame - prev_frame
+            if frame_gap == 0 or frame_gap > 5:
+                speeds.append(None)
+                continue
+
+            dist = np.sqrt((curr_x - prev_x)**2 + (curr_y - prev_y)**2)
+            speed = dist / frame_gap
+            speeds.append(speed)
+
+        # Detect sudden speed spikes
+        hits = []
+        window = 3  # frames to average for baseline speed
+        for i in range(window, len(speeds) - 1):
+            if speeds[i] is None:
+                continue
+
+            # Compute average speed in the window before this frame
+            prev_speeds = [s for s in speeds[i-window:i] if s is not None]
+            if len(prev_speeds) == 0:
+                continue
+
+            avg_speed = np.mean(prev_speeds)
+
+            # Hit detected if current speed is significantly higher than recent average
+            if avg_speed > 0 and speeds[i] / avg_speed >= speed_threshold:
+                frame_idx = positions[i + 1][0]  # +1 because speeds is offset by 1
+                # Check minimum distance from last hit
+                if len(hits) == 0 or frame_idx - hits[-1]['frame'] >= min_frames_between:
+                    hits.append({
+                        'frame': frame_idx,
+                        'speed': speeds[i],
+                        'avg_speed_before': avg_speed,
+                        'speed_ratio': speeds[i] / avg_speed,
+                    })
+
+        return hits

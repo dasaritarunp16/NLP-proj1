@@ -108,6 +108,20 @@ def main():
             zone = ball_tracker.classify_shot(rx, ry)
             print(f"  Bounce at frame {f}: ({rx:.2f}, {ry:.2f}) -> {zone}")
 
+    # Detect hits (sudden speed spikes = moment of contact)
+    hits = ball_tracker.detect_hits(b_detect)
+    print(f"\nHits detected: {len(hits)}")
+    for hit in hits:
+        f = hit['frame']
+        if 1 in b_detect[f]:
+            box = b_detect[f][1]
+            hx, hy = ball_tracker.ball_center(box)
+            ball_frame = np.array([[[hx, hy]]], dtype=np.float32)
+            ball_h = cv2.perspectiveTransform(ball_frame, H_points)
+            rx, ry = ball_h[0][0][0], ball_h[0][0][1]
+            zone = ball_tracker.classify_shot(rx, ry)
+            print(f"  Hit at frame {f}: ({rx:.2f}, {ry:.2f}) -> {zone} (speed ratio: {hit['speed_ratio']:.1f}x)")
+
 
 if __name__ == "__main__":
     main()
