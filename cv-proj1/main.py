@@ -90,6 +90,8 @@ def main():
                 })
             else:
                 frames_out_of_court += 1
+                if frames_out_of_court <= 10:
+                    print(f"  OUT: frame {frame_count} pixel=({x:.0f},{y:.0f}) -> real=({rx:.2f},{ry:.2f})")
 
     print(f"\n--- DEBUG ---")
     print(f"Total frames: {len(b_detect)}")
