@@ -147,12 +147,16 @@ def main():
     print(f"--- END DEBUG ---\n")
 
     # --- Shot detection: furthest y-point in each pass ---
-    # Track the ball back and forth. Each time it reverses direction,
-    # the furthest y-point reached = where the ball landed for that shot.
+    # Only record a landing AFTER the next direction change confirms it.
+    # Ball goes direction A → reaches furthest point → changes to direction B.
+    # We hold that point as "pending". Only when the ball changes direction
+    # AGAIN (back to A) do we confirm and record the pending landing.
     MIN_Y_TRAVEL = 3.0        # minimum y-distance between consecutive shots
     REVERSAL_THRESHOLD = 2.0  # ball must move this far back before we confirm reversal
 
     shot_landings = []
+    pending_landing = None  # held until next reversal confirms it
+
     if len(ball_trajectory) >= 2:
         extreme_pt = ball_trajectory[0]
         going_near = ball_trajectory[1]['ry'] > ball_trajectory[0]['ry']
@@ -161,35 +165,41 @@ def main():
             pt = ball_trajectory[i]
 
             if going_near:
-                # Ball heading toward near baseline (y increasing)
                 if pt['ry'] >= extreme_pt['ry']:
-                    extreme_pt = pt  # new furthest point
+                    extreme_pt = pt
                 elif extreme_pt['ry'] - pt['ry'] > REVERSAL_THRESHOLD:
-                    # Ball reversed — record the furthest point as landing
-                    if len(shot_landings) == 0 or abs(extreme_pt['ry'] - shot_landings[-1]['y_coord']) >= MIN_Y_TRAVEL:
-                        zone = court_zones.classify_real(extreme_pt['rx'], extreme_pt['ry'])
-                        shot_landings.append({
-                            'frame': extreme_pt['frame'],
-                            'x_coord': extreme_pt['rx'],
-                            'y_coord': extreme_pt['ry'],
-                            'zone': zone,
-                        })
+                    # Reversal detected — confirm the PREVIOUS pending landing
+                    if pending_landing is not None:
+                        if len(shot_landings) == 0 or abs(pending_landing['y_coord'] - shot_landings[-1]['y_coord']) >= MIN_Y_TRAVEL:
+                            shot_landings.append(pending_landing)
+
+                    # This extreme point becomes the new pending landing
+                    zone = court_zones.classify_real(extreme_pt['rx'], extreme_pt['ry'])
+                    pending_landing = {
+                        'frame': extreme_pt['frame'],
+                        'x_coord': extreme_pt['rx'],
+                        'y_coord': extreme_pt['ry'],
+                        'zone': zone,
+                    }
                     extreme_pt = pt
                     going_near = False
             else:
-                # Ball heading toward far baseline (y decreasing)
                 if pt['ry'] <= extreme_pt['ry']:
-                    extreme_pt = pt  # new furthest point
+                    extreme_pt = pt
                 elif pt['ry'] - extreme_pt['ry'] > REVERSAL_THRESHOLD:
-                    # Ball reversed — record the furthest point as landing
-                    if len(shot_landings) == 0 or abs(extreme_pt['ry'] - shot_landings[-1]['y_coord']) >= MIN_Y_TRAVEL:
-                        zone = court_zones.classify_real(extreme_pt['rx'], extreme_pt['ry'])
-                        shot_landings.append({
-                            'frame': extreme_pt['frame'],
-                            'x_coord': extreme_pt['rx'],
-                            'y_coord': extreme_pt['ry'],
-                            'zone': zone,
-                        })
+                    # Reversal detected — confirm the PREVIOUS pending landing
+                    if pending_landing is not None:
+                        if len(shot_landings) == 0 or abs(pending_landing['y_coord'] - shot_landings[-1]['y_coord']) >= MIN_Y_TRAVEL:
+                            shot_landings.append(pending_landing)
+
+                    # This extreme point becomes the new pending landing
+                    zone = court_zones.classify_real(extreme_pt['rx'], extreme_pt['ry'])
+                    pending_landing = {
+                        'frame': extreme_pt['frame'],
+                        'x_coord': extreme_pt['rx'],
+                        'y_coord': extreme_pt['ry'],
+                        'zone': zone,
+                    }
                     extreme_pt = pt
                     going_near = True
 
