@@ -86,8 +86,8 @@ def main():
     frames_out_of_court = 0
     frames_outside_pixel_court = 0
     frames_static = 0
-    STATIC_THRESHOLD = 10    # pixels - if ball moves less than this, it's "static"
-    STATIC_MAX_COUNT = 3     # consecutive static frames before we start filtering
+    STATIC_THRESHOLD = 5     # pixels - if ball moves less than this, it's "static"
+    STATIC_MAX_COUNT = 8     # consecutive static frames before we start filtering
     prev_px, prev_py = None, None
     static_count = 0
     for frame_count, balls in enumerate(b_detect):
@@ -136,10 +136,8 @@ def main():
     print(f"Frames out of real court (filtered): {frames_out_of_court}")
     print(f"Frames in court (ball_trajectory before sampling): {len(ball_trajectory)}")
 
-    # Sample every Nth point for a cleaner ball path
-    SAMPLE_EVERY = 5
-    ball_trajectory = ball_trajectory[::SAMPLE_EVERY]
-    print(f"Frames after sampling every {SAMPLE_EVERY}: {len(ball_trajectory)}")
+    # No sampling needed — TrackNet provides reliable detections
+    print(f"Trajectory points: {len(ball_trajectory)}")
 
     if len(ball_trajectory) > 0:
         print(f"First detection: frame {ball_trajectory[0]['frame']} ({ball_trajectory[0]['rx']:.2f}, {ball_trajectory[0]['ry']:.2f})")
@@ -152,7 +150,7 @@ def main():
     # Only confirm a shot once the next direction change validates it.
     MIN_Y_TRAVEL = 3.0        # minimum y-distance between consecutive shots
     REVERSAL_THRESHOLD = 2.0  # ball must move this far back before we confirm reversal
-    MID_SKIP = 5              # frames to skip from start to capture mid-flight position
+    MID_SKIP = 2              # frames to skip from start to capture mid-flight position
 
     shot_landings = []
     pending_shot = None       # held until next reversal confirms it
@@ -220,6 +218,27 @@ def main():
                     extreme_pt = pt
                     extreme_idx = i
                     going_near = True
+
+    # Capture the last pending shot (confirmed by end of data)
+    if pending_shot is not None:
+        if len(shot_landings) == 0 or abs(pending_shot['end']['ry'] - shot_landings[-1]['end']['ry']) >= MIN_Y_TRAVEL:
+            shot_landings.append(pending_shot)
+
+    # Also capture the final in-progress pass (from last reversal to end of trajectory)
+    if len(ball_trajectory) >= 2:
+        start_pt = ball_trajectory[pass_start_idx]
+        mid_idx = min(pass_start_idx + MID_SKIP, len(ball_trajectory) - 1)
+        mid_pt = ball_trajectory[mid_idx]
+        end_pt = extreme_pt
+        end_zone = court_zones.classify_real(end_pt['rx'], end_pt['ry'])
+        final_shot = {
+            'start': start_pt,
+            'mid': mid_pt,
+            'end': end_pt,
+            'zone': end_zone,
+        }
+        if len(shot_landings) == 0 or abs(final_shot['end']['ry'] - shot_landings[-1]['end']['ry']) >= MIN_Y_TRAVEL:
+            shot_landings.append(final_shot)
 
     print(f"\nShots detected: {len(shot_landings)}")
     for idx, s in enumerate(shot_landings):
