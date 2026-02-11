@@ -357,6 +357,11 @@ def main():
                 merged.append(s)
         shot_landings = merged
 
+    # --- Filter out shots that are too short (noise) ---
+    MIN_SHOT_FRAMES = 10  # shot must span at least this many video frames
+    shot_landings = [s for s in shot_landings
+                     if s['end']['frame'] - s['start']['frame'] >= MIN_SHOT_FRAMES]
+
     # --- Player-ball fusion: validate landing zones with receiving player position ---
     # The receiving player runs to where the ball lands, so their foot position
     # at the shot's end frame provides a second opinion on the landing zone.
