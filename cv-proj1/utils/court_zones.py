@@ -72,18 +72,23 @@ class CourtZones:
         if rx_c > 9.60:
             return "right_alley"
 
-        # Deuce (x < 5.485) vs Ad (x >= 5.485)
-        side = "deuce" if rx_c < 5.485 else "ad"
-
-        # Far vs Near and backcourt vs service box
-        if ry_c < 5.485:
-            return f"far_{side}_backcourt"
-        elif ry_c < 11.885:
-            return f"far_{side}_service_box"
-        elif ry_c < 18.285:
-            return f"near_{side}_service_box"
+        # Deuce/Ad flips between near and far court:
+        #   Far court (from far player's view): deuce = low x (left in broadcast)
+        #   Near court (from near player's view): deuce = high x (right in broadcast)
+        if ry_c < 11.885:
+            # Far court
+            side = "deuce" if rx_c < 5.485 else "ad"
+            if ry_c < 5.485:
+                return f"far_{side}_backcourt"
+            else:
+                return f"far_{side}_service_box"
         else:
-            return f"near_{side}_backcourt"
+            # Near court
+            side = "deuce" if rx_c >= 5.485 else "ad"
+            if ry_c < 18.285:
+                return f"near_{side}_service_box"
+            else:
+                return f"near_{side}_backcourt"
 
     def draw_zones(self, frame):
         colors = {

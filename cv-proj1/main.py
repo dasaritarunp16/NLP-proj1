@@ -253,6 +253,36 @@ def main():
         if len(shot_landings) == 0 or abs(final_shot['end']['ry'] - shot_landings[-1]['end']['ry']) >= MIN_Y_TRAVEL:
             shot_landings.append(final_shot)
 
+    # --- Merge consecutive same-direction shots ---
+    # In tennis, every real shot changes direction. If two consecutive shots
+    # both go near→far (or both far→near), it's the same shot with a bounce
+    # in between. Merge them: keep first shot's start, last shot's end.
+    if len(shot_landings) >= 2:
+        merged = [shot_landings[0]]
+        for s in shot_landings[1:]:
+            prev = merged[-1]
+            prev_dir = prev['end']['ry'] - prev['start']['ry']  # positive=going near, negative=going far
+            curr_dir = s['end']['ry'] - s['start']['ry']
+
+            if (prev_dir > 0 and curr_dir > 0) or (prev_dir < 0 and curr_dir < 0):
+                # Same direction — merge: keep prev start, use curr end (more extreme)
+                # Recalculate mid as midpoint between start and new end
+                start_frame = prev['start']['frame']
+                end_frame = s['end']['frame']
+                # Find the trajectory point closest to the temporal midpoint
+                target_frame = (start_frame + end_frame) // 2
+                mid_pt = min(ball_trajectory, key=lambda p: abs(p['frame'] - target_frame))
+                end_zone = court_zones.classify_real(s['end']['rx'], s['end']['ry'])
+                merged[-1] = {
+                    'start': prev['start'],
+                    'mid': mid_pt,
+                    'end': s['end'],
+                    'zone': end_zone,
+                }
+            else:
+                merged.append(s)
+        shot_landings = merged
+
     print(f"\nShots detected: {len(shot_landings)}")
     for idx, s in enumerate(shot_landings):
         start = s['start']
