@@ -198,7 +198,7 @@ def main():
                     extreme_pt = pt
                     extreme_idx = i
                 elif extreme_pt['ry'] - pt['ry'] > REVERSAL_THRESHOLD:
-                    pass_length = extreme_idx - pass_start_idx + 1
+                    pass_length = i - pass_start_idx + 1
                     if pass_length < MIN_PASS_POINTS:
                         # Too short — not a real shot, just crosscourt wobble
                         # Keep tracking in the same direction, don't reset
@@ -231,7 +231,7 @@ def main():
                     extreme_pt = pt
                     extreme_idx = i
                 elif pt['ry'] - extreme_pt['ry'] > REVERSAL_THRESHOLD:
-                    pass_length = extreme_idx - pass_start_idx + 1
+                    pass_length = i - pass_start_idx + 1
                     if pass_length < MIN_PASS_POINTS:
                         # Too short — not a real shot, just crosscourt wobble
                         # Keep tracking in the same direction, don't reset
