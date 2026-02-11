@@ -144,6 +144,52 @@ def main():
         print(f"Last detection: frame {ball_trajectory[-1]['frame']} ({ball_trajectory[-1]['rx']:.2f}, {ball_trajectory[-1]['ry']:.2f})")
     print(f"--- END DEBUG ---\n")
 
+    # --- Build player trajectories in real-world coords ---
+    # Use foot position (bottom-center of bbox) + homography
+    # player_positions[frame_idx] = {track_id: (rx, ry), ...}
+    player_positions = {}
+    for frame_idx, players in enumerate(p_detect):
+        player_positions[frame_idx] = {}
+        for track_id, box in players.items():
+            x1, y1, x2, y2 = box
+            foot_x = (x1 + x2) / 2
+            foot_y = y2  # bottom of bounding box = feet
+            # Only use players inside the court polygon
+            if cv2.pointPolygonTest(court_boundary, (float(foot_x), float(foot_y)), False) < 0:
+                continue
+            foot_frame = np.array([[[foot_x, foot_y]]], dtype=np.float32)
+            foot_real = cv2.perspectiveTransform(foot_frame, H_points)
+            rx, ry = float(foot_real[0][0][0]), float(foot_real[0][0][1])
+            if ball_tracker.balls_in_court(rx, ry):
+                player_positions[frame_idx][track_id] = (rx, ry)
+
+    # Identify near player and far player by average y-position
+    # Near player: avg ry > 11.885 (near half), Far player: avg ry < 11.885
+    player_avg_y = {}
+    player_counts = {}
+    for frame_idx, players in player_positions.items():
+        for track_id, (rx, ry) in players.items():
+            if track_id not in player_avg_y:
+                player_avg_y[track_id] = 0.0
+                player_counts[track_id] = 0
+            player_avg_y[track_id] += ry
+            player_counts[track_id] += 1
+
+    # Pick the two most-seen players
+    sorted_players = sorted(player_counts.keys(), key=lambda tid: player_counts[tid], reverse=True)
+    near_player_id = None
+    far_player_id = None
+    if len(sorted_players) >= 2:
+        p1, p2 = sorted_players[0], sorted_players[1]
+        avg_y1 = player_avg_y[p1] / player_counts[p1]
+        avg_y2 = player_avg_y[p2] / player_counts[p2]
+        if avg_y1 > avg_y2:
+            near_player_id, far_player_id = p1, p2
+        else:
+            near_player_id, far_player_id = p2, p1
+        print(f"Near player: ID {near_player_id} (avg y={player_avg_y[near_player_id]/player_counts[near_player_id]:.2f})")
+        print(f"Far player: ID {far_player_id} (avg y={player_avg_y[far_player_id]/player_counts[far_player_id]:.2f})")
+
     # --- Shot detection: 3-point trajectory per shot ---
     # For each shot, capture: start (after last reversal), mid (a few frames in),
     # and end (furthest y-point before next reversal).
@@ -311,6 +357,54 @@ def main():
                 merged.append(s)
         shot_landings = merged
 
+    # --- Player-ball fusion: validate landing zones with receiving player position ---
+    # The receiving player runs to where the ball lands, so their foot position
+    # at the shot's end frame provides a second opinion on the landing zone.
+    PLAYER_SEARCH_WINDOW = 5  # search +/- frames around end frame for player position
+    BALL_WEIGHT = 0.6         # weight for ball position in fusion
+    PLAYER_WEIGHT = 0.4       # weight for player position in fusion
+
+    for s in shot_landings:
+        end_frame = s['end']['frame']
+        ball_going_far = s['end']['ry'] < s['start']['ry']
+
+        # Determine receiving player: far player if ball going far, near player if going near
+        receiver_id = far_player_id if ball_going_far else near_player_id
+        if receiver_id is None:
+            s['player_zone'] = None
+            s['fused_zone'] = s['zone']
+            continue
+
+        # Find receiver's position near the end frame (search a window)
+        receiver_pos = None
+        for offset in range(0, PLAYER_SEARCH_WINDOW + 1):
+            for f in [end_frame + offset, end_frame - offset]:
+                if f in player_positions and receiver_id in player_positions[f]:
+                    receiver_pos = player_positions[f][receiver_id]
+                    break
+            if receiver_pos is not None:
+                break
+
+        if receiver_pos is None:
+            s['player_zone'] = None
+            s['fused_zone'] = s['zone']
+            continue
+
+        p_rx, p_ry = receiver_pos
+        player_zone = court_zones.classify_real(p_rx, p_ry)
+        s['player_zone'] = player_zone
+        s['player_pos'] = receiver_pos
+
+        # Fuse: if zones agree, high confidence. If not, blend positions.
+        ball_zone = s['zone']
+        if ball_zone == player_zone:
+            s['fused_zone'] = ball_zone
+        else:
+            # Weighted average of ball and player positions
+            fused_rx = BALL_WEIGHT * s['end']['rx'] + PLAYER_WEIGHT * p_rx
+            fused_ry = BALL_WEIGHT * s['end']['ry'] + PLAYER_WEIGHT * p_ry
+            s['fused_zone'] = court_zones.classify_real(fused_rx, fused_ry)
+
     print(f"\nShots detected: {len(shot_landings)}")
     for idx, s in enumerate(shot_landings):
         start = s['start']
@@ -319,16 +413,19 @@ def main():
         print(f"  Shot {idx+1}:")
         print(f"    Start  - Frame {start['frame']}: ({start['rx']:.2f}, {start['ry']:.2f}) -> {court_zones.classify_real(start['rx'], start['ry'])}")
         print(f"    Mid    - Frame {mid['frame']}: ({mid['rx']:.2f}, {mid['ry']:.2f}) -> {court_zones.classify_real(mid['rx'], mid['ry'])}")
-        print(f"    End    - Frame {end['frame']}: ({end['rx']:.2f}, {end['ry']:.2f}) -> {s['zone']}")
+        print(f"    End    - Frame {end['frame']}: ({end['rx']:.2f}, {end['ry']:.2f}) -> Ball: {s['zone']}")
+        if s.get('player_zone'):
+            print(f"    Player - ({s['player_pos'][0]:.2f}, {s['player_pos'][1]:.2f}) -> {s['player_zone']}")
+        print(f"    FINAL  -> {s['fused_zone']}")
 
-    # Build shot_landings in the format plot_shots expects (using end point)
+    # Build shot_landings in the format plot_shots expects (using end point + fused zone)
     shot_landings_for_viz = []
     for s in shot_landings:
         shot_landings_for_viz.append({
             'frame': s['end']['frame'],
             'x_coord': s['end']['rx'],
             'y_coord': s['end']['ry'],
-            'zone': s['zone'],
+            'zone': s['fused_zone'],
         })
 
     # Visualize ball trajectory on 2D court
