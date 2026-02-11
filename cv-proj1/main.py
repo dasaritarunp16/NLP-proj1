@@ -152,6 +152,7 @@ def main():
     REVERSAL_THRESHOLD = 2.0  # ball must move this far back before we confirm reversal
     MIN_PASS_POINTS = 8       # minimum trajectory points for a pass to count as a real shot
     MID_SKIP = 2              # frames to skip from start to capture mid-flight position
+    MAX_FRAME_GAP = 20        # if gap between consecutive detections exceeds this, force a pass break
 
     shot_landings = []
     pending_shot = None       # held until next reversal confirms it
@@ -164,6 +165,34 @@ def main():
 
         for i in range(1, len(ball_trajectory)):
             pt = ball_trajectory[i]
+            prev_pt = ball_trajectory[i - 1]
+
+            # If large frame gap, the ball likely traveled and returned unseen
+            # Force end the current pass and start fresh
+            if pt['frame'] - prev_pt['frame'] > MAX_FRAME_GAP:
+                pass_length = extreme_idx - pass_start_idx + 1
+                if pass_length >= MIN_PASS_POINTS:
+                    if pending_shot is not None:
+                        if len(shot_landings) == 0 or abs(pending_shot['end']['ry'] - shot_landings[-1]['end']['ry']) >= MIN_Y_TRAVEL:
+                            shot_landings.append(pending_shot)
+                    start_pt = ball_trajectory[pass_start_idx]
+                    mid_idx = min(pass_start_idx + MID_SKIP, extreme_idx)
+                    mid_pt = ball_trajectory[mid_idx]
+                    end_pt = extreme_pt
+                    end_zone = court_zones.classify_real(end_pt['rx'], end_pt['ry'])
+                    pending_shot = {
+                        'start': start_pt,
+                        'mid': mid_pt,
+                        'end': end_pt,
+                        'zone': end_zone,
+                    }
+                # Reset pass — re-determine direction from this point
+                pass_start_idx = i
+                extreme_pt = pt
+                extreme_idx = i
+                if i + 1 < len(ball_trajectory):
+                    going_near = ball_trajectory[i + 1]['ry'] > pt['ry']
+                continue
 
             if going_near:
                 if pt['ry'] >= extreme_pt['ry']:
