@@ -358,7 +358,7 @@ def main():
         shot_landings = merged
 
     # --- Filter out shots that are too short (noise) ---
-    MIN_SHOT_FRAMES = 10  # shot must span at least this many video frames
+    MIN_SHOT_FRAMES = 5  # shot must span at least this many video frames
     shot_landings = [s for s in shot_landings
                      if s['end']['frame'] - s['start']['frame'] >= MIN_SHOT_FRAMES]
 
