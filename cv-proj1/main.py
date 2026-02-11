@@ -146,19 +146,21 @@ def main():
         print(f"Last detection: frame {ball_trajectory[-1]['frame']} ({ball_trajectory[-1]['rx']:.2f}, {ball_trajectory[-1]['ry']:.2f})")
     print(f"--- END DEBUG ---\n")
 
-    # --- Shot detection: furthest y-point in each pass ---
-    # Only record a landing AFTER the next direction change confirms it.
-    # Ball goes direction A → reaches furthest point → changes to direction B.
-    # We hold that point as "pending". Only when the ball changes direction
-    # AGAIN (back to A) do we confirm and record the pending landing.
+    # --- Shot detection: 3-point trajectory per shot ---
+    # For each shot, capture: start (after last reversal), mid (a few frames in),
+    # and end (furthest y-point before next reversal).
+    # Only confirm a shot once the next direction change validates it.
     MIN_Y_TRAVEL = 3.0        # minimum y-distance between consecutive shots
     REVERSAL_THRESHOLD = 2.0  # ball must move this far back before we confirm reversal
+    MID_SKIP = 5              # frames to skip from start to capture mid-flight position
 
     shot_landings = []
-    pending_landing = None  # held until next reversal confirms it
+    pending_shot = None       # held until next reversal confirms it
+    pass_start_idx = 0        # index where the current pass began
 
     if len(ball_trajectory) >= 2:
         extreme_pt = ball_trajectory[0]
+        extreme_idx = 0
         going_near = ball_trajectory[1]['ry'] > ball_trajectory[0]['ry']
 
         for i in range(1, len(ball_trajectory)):
@@ -167,50 +169,82 @@ def main():
             if going_near:
                 if pt['ry'] >= extreme_pt['ry']:
                     extreme_pt = pt
+                    extreme_idx = i
                 elif extreme_pt['ry'] - pt['ry'] > REVERSAL_THRESHOLD:
-                    # Reversal detected — confirm the PREVIOUS pending landing
-                    if pending_landing is not None:
-                        if len(shot_landings) == 0 or abs(pending_landing['y_coord'] - shot_landings[-1]['y_coord']) >= MIN_Y_TRAVEL:
-                            shot_landings.append(pending_landing)
+                    # Reversal detected — confirm the PREVIOUS pending shot
+                    if pending_shot is not None:
+                        if len(shot_landings) == 0 or abs(pending_shot['end']['ry'] - shot_landings[-1]['end']['ry']) >= MIN_Y_TRAVEL:
+                            shot_landings.append(pending_shot)
 
-                    # This extreme point becomes the new pending landing
-                    zone = court_zones.classify_real(extreme_pt['rx'], extreme_pt['ry'])
-                    pending_landing = {
-                        'frame': extreme_pt['frame'],
-                        'x_coord': extreme_pt['rx'],
-                        'y_coord': extreme_pt['ry'],
-                        'zone': zone,
+                    # Build 3-point shot: start, mid, end
+                    start_pt = ball_trajectory[pass_start_idx]
+                    mid_idx = min(pass_start_idx + MID_SKIP, extreme_idx)
+                    mid_pt = ball_trajectory[mid_idx]
+                    end_pt = extreme_pt
+
+                    end_zone = court_zones.classify_real(end_pt['rx'], end_pt['ry'])
+                    pending_shot = {
+                        'start': start_pt,
+                        'mid': mid_pt,
+                        'end': end_pt,
+                        'zone': end_zone,
                     }
+                    pass_start_idx = i
                     extreme_pt = pt
+                    extreme_idx = i
                     going_near = False
             else:
                 if pt['ry'] <= extreme_pt['ry']:
                     extreme_pt = pt
+                    extreme_idx = i
                 elif pt['ry'] - extreme_pt['ry'] > REVERSAL_THRESHOLD:
-                    # Reversal detected — confirm the PREVIOUS pending landing
-                    if pending_landing is not None:
-                        if len(shot_landings) == 0 or abs(pending_landing['y_coord'] - shot_landings[-1]['y_coord']) >= MIN_Y_TRAVEL:
-                            shot_landings.append(pending_landing)
+                    # Reversal detected — confirm the PREVIOUS pending shot
+                    if pending_shot is not None:
+                        if len(shot_landings) == 0 or abs(pending_shot['end']['ry'] - shot_landings[-1]['end']['ry']) >= MIN_Y_TRAVEL:
+                            shot_landings.append(pending_shot)
 
-                    # This extreme point becomes the new pending landing
-                    zone = court_zones.classify_real(extreme_pt['rx'], extreme_pt['ry'])
-                    pending_landing = {
-                        'frame': extreme_pt['frame'],
-                        'x_coord': extreme_pt['rx'],
-                        'y_coord': extreme_pt['ry'],
-                        'zone': zone,
+                    # Build 3-point shot: start, mid, end
+                    start_pt = ball_trajectory[pass_start_idx]
+                    mid_idx = min(pass_start_idx + MID_SKIP, extreme_idx)
+                    mid_pt = ball_trajectory[mid_idx]
+                    end_pt = extreme_pt
+
+                    end_zone = court_zones.classify_real(end_pt['rx'], end_pt['ry'])
+                    pending_shot = {
+                        'start': start_pt,
+                        'mid': mid_pt,
+                        'end': end_pt,
+                        'zone': end_zone,
                     }
+                    pass_start_idx = i
                     extreme_pt = pt
+                    extreme_idx = i
                     going_near = True
 
     print(f"\nShots detected: {len(shot_landings)}")
-    for idx, b in enumerate(shot_landings):
-        print(f"  Shot {idx+1} - Frame {b['frame']}: ({b['x_coord']:.2f}, {b['y_coord']:.2f}) -> {b['zone']}")
+    for idx, s in enumerate(shot_landings):
+        start = s['start']
+        mid = s['mid']
+        end = s['end']
+        print(f"  Shot {idx+1}:")
+        print(f"    Start  - Frame {start['frame']}: ({start['rx']:.2f}, {start['ry']:.2f}) -> {court_zones.classify_real(start['rx'], start['ry'])}")
+        print(f"    Mid    - Frame {mid['frame']}: ({mid['rx']:.2f}, {mid['ry']:.2f}) -> {court_zones.classify_real(mid['rx'], mid['ry'])}")
+        print(f"    End    - Frame {end['frame']}: ({end['rx']:.2f}, {end['ry']:.2f}) -> {s['zone']}")
+
+    # Build shot_landings in the format plot_shots expects (using end point)
+    shot_landings_for_viz = []
+    for s in shot_landings:
+        shot_landings_for_viz.append({
+            'frame': s['end']['frame'],
+            'x_coord': s['end']['rx'],
+            'y_coord': s['end']['ry'],
+            'zone': s['zone'],
+        })
 
     # Visualize ball trajectory on 2D court
     visualizer = CourtVisualizer()
     visualizer.plot_trajectory(ball_trajectory)
-    visualizer.plot_shots(ball_trajectory, shot_landings)
+    visualizer.plot_shots(ball_trajectory, shot_landings_for_viz)
 
 
 if __name__ == "__main__":
