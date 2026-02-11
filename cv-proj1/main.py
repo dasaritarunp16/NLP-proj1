@@ -423,17 +423,23 @@ def main():
         s['player_zone'] = player_zone
         s['player_pos'] = receiver_pos
 
-        # Fuse: player informs left/right (deuce/ad), ball informs depth (backcourt/service box)
-        # The player's x-position shows which side they ran to (deuce vs ad).
-        # The ball's y-position is more reliable for depth — the player may not
-        # have reached the ball yet.
+        # Fuse: mandatory rule + fallback
+        # Rule 1: If the player is closer to the net than the ball, the player
+        #         intercepted the ball there — use the player's position entirely.
+        # Rule 2: Otherwise, player informs x (deuce/ad), ball informs y (depth).
+        NET_Y = 11.885
         ball_zone = s['zone']
+        player_closer_to_net = abs(p_ry - NET_Y) < abs(s['end']['ry'] - NET_Y)
+
         if ball_zone == player_zone:
             s['fused_zone'] = ball_zone
+        elif player_closer_to_net:
+            # Player is closer to net than ball — they got to the ball here
+            s['fused_zone'] = player_zone
         else:
-            # Use player's x (deuce/ad) + ball's y (depth)
+            # Player is deeper — use player's x (deuce/ad) + ball's y (depth)
             fused_rx = BALL_WEIGHT * s['end']['rx'] + PLAYER_WEIGHT * p_rx
-            fused_ry = s['end']['ry']  # keep ball's depth, don't blend y
+            fused_ry = s['end']['ry']
             s['fused_zone'] = court_zones.classify_real(fused_rx, fused_ry)
 
     print(f"\nShots detected: {len(shot_landings)}")
