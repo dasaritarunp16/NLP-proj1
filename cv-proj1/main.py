@@ -150,6 +150,7 @@ def main():
     # Only confirm a shot once the next direction change validates it.
     MIN_Y_TRAVEL = 3.0        # minimum y-distance between consecutive shots
     REVERSAL_THRESHOLD = 2.0  # ball must move this far back before we confirm reversal
+    MIN_PASS_POINTS = 8       # minimum trajectory points for a pass to count as a real shot
     MID_SKIP = 2              # frames to skip from start to capture mid-flight position
 
     shot_landings = []
@@ -169,6 +170,12 @@ def main():
                     extreme_pt = pt
                     extreme_idx = i
                 elif extreme_pt['ry'] - pt['ry'] > REVERSAL_THRESHOLD:
+                    pass_length = extreme_idx - pass_start_idx + 1
+                    if pass_length < MIN_PASS_POINTS:
+                        # Too short — not a real shot, just crosscourt wobble
+                        # Keep tracking in the same direction, don't reset
+                        continue
+
                     # Reversal detected — confirm the PREVIOUS pending shot
                     if pending_shot is not None:
                         if len(shot_landings) == 0 or abs(pending_shot['end']['ry'] - shot_landings[-1]['end']['ry']) >= MIN_Y_TRAVEL:
@@ -196,6 +203,12 @@ def main():
                     extreme_pt = pt
                     extreme_idx = i
                 elif pt['ry'] - extreme_pt['ry'] > REVERSAL_THRESHOLD:
+                    pass_length = extreme_idx - pass_start_idx + 1
+                    if pass_length < MIN_PASS_POINTS:
+                        # Too short — not a real shot, just crosscourt wobble
+                        # Keep tracking in the same direction, don't reset
+                        continue
+
                     # Reversal detected — confirm the PREVIOUS pending shot
                     if pending_shot is not None:
                         if len(shot_landings) == 0 or abs(pending_shot['end']['ry'] - shot_landings[-1]['end']['ry']) >= MIN_Y_TRAVEL:
