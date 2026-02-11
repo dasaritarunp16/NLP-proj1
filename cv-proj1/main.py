@@ -152,8 +152,7 @@ def main():
     REVERSAL_THRESHOLD = 2.0  # ball must move this far back before we confirm reversal
     MIN_PASS_POINTS = 8       # minimum trajectory points for a pass to count as a real shot
     MID_SKIP = 2              # frames to skip from start to capture mid-flight position
-    MAX_FRAME_GAP = 20        # if gap between consecutive detections exceeds this, force a pass break
-    MAX_PASS_DURATION = 45    # max video frames a single pass can span (~1.5s at 30fps)
+    MAX_FRAME_GAP = 12        # if gap between consecutive detections exceeds this, force a pass break
 
     shot_landings = []
     pending_shot = None       # held until next reversal confirms it
@@ -168,11 +167,8 @@ def main():
             pt = ball_trajectory[i]
             prev_pt = ball_trajectory[i - 1]
 
-            # Force a pass break if: large frame gap OR pass has been going too long
-            frame_gap = pt['frame'] - prev_pt['frame'] > MAX_FRAME_GAP
-            pass_too_long = pt['frame'] - ball_trajectory[pass_start_idx]['frame'] > MAX_PASS_DURATION
-
-            if frame_gap or pass_too_long:
+            # Force a pass break if large frame gap (tracker lost the ball)
+            if pt['frame'] - prev_pt['frame'] > MAX_FRAME_GAP:
                 pass_length = extreme_idx - pass_start_idx + 1
                 if pass_length >= MIN_PASS_POINTS:
                     if pending_shot is not None:
