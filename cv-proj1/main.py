@@ -362,6 +362,29 @@ def main():
     shot_landings = [s for s in shot_landings
                      if s['end']['frame'] - s['start']['frame'] >= MIN_SHOT_FRAMES]
 
+    # --- Second merge pass: filtering may have exposed new same-direction pairs ---
+    if len(shot_landings) >= 2:
+        merged = [shot_landings[0]]
+        for s in shot_landings[1:]:
+            prev = merged[-1]
+            prev_dir = prev['end']['ry'] - prev['start']['ry']
+            curr_dir = s['end']['ry'] - s['start']['ry']
+            if (prev_dir > 0 and curr_dir > 0) or (prev_dir < 0 and curr_dir < 0):
+                start_frame = prev['start']['frame']
+                end_frame = s['end']['frame']
+                target_frame = (start_frame + end_frame) // 2
+                mid_pt = min(ball_trajectory, key=lambda p: abs(p['frame'] - target_frame))
+                end_zone = court_zones.classify_real(s['end']['rx'], s['end']['ry'])
+                merged[-1] = {
+                    'start': prev['start'],
+                    'mid': mid_pt,
+                    'end': s['end'],
+                    'zone': end_zone,
+                }
+            else:
+                merged.append(s)
+        shot_landings = merged
+
     # --- Player-ball fusion: validate landing zones with receiving player position ---
     # The receiving player runs to where the ball lands, so their foot position
     # at the shot's end frame provides a second opinion on the landing zone.
@@ -400,14 +423,17 @@ def main():
         s['player_zone'] = player_zone
         s['player_pos'] = receiver_pos
 
-        # Fuse: if zones agree, high confidence. If not, blend positions.
+        # Fuse: player informs left/right (deuce/ad), ball informs depth (backcourt/service box)
+        # The player's x-position shows which side they ran to (deuce vs ad).
+        # The ball's y-position is more reliable for depth — the player may not
+        # have reached the ball yet.
         ball_zone = s['zone']
         if ball_zone == player_zone:
             s['fused_zone'] = ball_zone
         else:
-            # Weighted average of ball and player positions
+            # Use player's x (deuce/ad) + ball's y (depth)
             fused_rx = BALL_WEIGHT * s['end']['rx'] + PLAYER_WEIGHT * p_rx
-            fused_ry = BALL_WEIGHT * s['end']['ry'] + PLAYER_WEIGHT * p_ry
+            fused_ry = s['end']['ry']  # keep ball's depth, don't blend y
             s['fused_zone'] = court_zones.classify_real(fused_rx, fused_ry)
 
     print(f"\nShots detected: {len(shot_landings)}")
