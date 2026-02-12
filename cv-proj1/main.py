@@ -27,6 +27,38 @@ def main():
 
     court_model_path = "keypoints_model_50.pth"
     court_line_detector = CLD(court_model_path)
+
+    # --- Per-frame keypoint detection ---
+    # Predict court keypoints every KEYPOINT_INTERVAL frames to handle
+    # camera pans, zooms, and angle changes mid-rally.
+    KEYPOINT_INTERVAL = 30  # predict every 30 frames (~1 second at 30fps)
+    keypoint_frames = {}    # {frame_idx: keypoints_reshaped}
+    homography_frames = {}  # {frame_idx: H_matrix}
+    boundary_frames = {}    # {frame_idx: court_boundary_polygon}
+
+    print(f"Running per-frame keypoint detection (every {KEYPOINT_INTERVAL} frames)...")
+    for f_idx in range(0, len(vid_frames), KEYPOINT_INTERVAL):
+        kp = court_line_detector.predict(vid_frames[f_idx])
+        kp_r = kp.reshape(-1, 2)
+        H = homography(kp_r)[0]
+        boundary = np.array([
+            kp_r[0], kp_r[1], kp_r[3], kp_r[2],
+        ], dtype=np.float32).reshape(-1, 1, 2)
+        keypoint_frames[f_idx] = kp_r
+        homography_frames[f_idx] = H
+        boundary_frames[f_idx] = boundary
+    print(f"  Keypoints predicted on {len(keypoint_frames)} frames")
+
+    # Helper: get the nearest keypoint prediction for any frame
+    keypoint_indices = sorted(keypoint_frames.keys())
+    def get_nearest_kp_idx(frame_idx):
+        best = keypoint_indices[0]
+        for ki in keypoint_indices:
+            if abs(ki - frame_idx) < abs(best - frame_idx):
+                best = ki
+        return best
+
+    # Use first frame's keypoints for visualization and zone setup
     court_keypoints = court_line_detector.predict(vid_frames[0])
     court_keypoints_r = court_keypoints.reshape(-1,2)
 
@@ -36,7 +68,11 @@ def main():
 
     o_vid_frames = Player_tracker.draw_boxes(vid_frames, p_detect)
     o_vid_frames = ball_tracker.draw_boxes(o_vid_frames, b_detect)
-    o_vid_frames = court_line_detector.draw_keypoints_on_video(o_vid_frames, court_keypoints)
+    # Draw per-frame keypoints (each frame uses its nearest keypoint prediction)
+    for f_idx in range(len(o_vid_frames)):
+        nearest_kp = get_nearest_kp_idx(f_idx)
+        kp_flat = keypoint_frames[nearest_kp].flatten()
+        o_vid_frames[f_idx] = court_line_detector.draw_keypoints(o_vid_frames[f_idx], kp_flat)
 
     save(o_vid_frames, "output_video/output.mp4")
 
@@ -69,21 +105,8 @@ def main():
         plt.title("Court Keypoints - Numbered")
         plt.show()
 
-    H_points = homography(court_keypoints_reshaped)[0]
-
-    print(f"Homography: {H_points}")
-
-    # Create court zones from keypoints (pixel-space rectangles)
+    # Create court zones from first frame keypoints (for zone classification)
     court_zones = CourtZones(court_keypoints_reshaped)
-
-    # Build pixel-space court boundary polygon from the 4 corner keypoints
-    # kp 0=far-left, 1=far-right, 3=near-right, 2=near-left
-    court_boundary = np.array([
-        court_keypoints_reshaped[0],
-        court_keypoints_reshaped[1],
-        court_keypoints_reshaped[3],
-        court_keypoints_reshaped[2],
-    ], dtype=np.float32).reshape(-1, 1, 2)
 
     # Build list of ball positions in real-world coords per frame
     ball_trajectory = []
@@ -112,6 +135,11 @@ def main():
             if static_count >= STATIC_MAX_COUNT:
                 frames_static += 1
                 continue
+
+            # Use nearest per-frame keypoint prediction for this frame
+            nearest_kp = get_nearest_kp_idx(frame_count)
+            court_boundary = boundary_frames[nearest_kp]
+            H_points = homography_frames[nearest_kp]
 
             # Filter: ball pixel position must be inside the court polygon
             if cv2.pointPolygonTest(court_boundary, (float(x), float(y)), False) < 0:
@@ -155,6 +183,9 @@ def main():
     player_positions = {}
     for frame_idx, players in enumerate(p_detect):
         player_positions[frame_idx] = {}
+        nearest_kp = get_nearest_kp_idx(frame_idx)
+        H_points = homography_frames[nearest_kp]
+        court_boundary = boundary_frames[nearest_kp]
         for track_id, box in players.items():
             x1, y1, x2, y2 = box
             foot_x = (x1 + x2) / 2
