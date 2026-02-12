@@ -13,6 +13,11 @@ def main():
     input = "test_video.mp4"
     vid_frames = read(input, start_time=25)  # start at 0:25
 
+    if len(vid_frames) == 0:
+        print(f"ERROR: No frames read from '{input}' at start_time=25s.")
+        print("Check that the video file exists and is longer than 25 seconds.")
+        return
+
     Player_tracker = PT(model = "yolo12n.pt")
 
     p_detect = Player_tracker.detect_frames(vid_frames)
