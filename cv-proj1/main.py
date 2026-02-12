@@ -3,7 +3,7 @@ from utils.video import read, save
 from utils.player_utils import PT
 from utils.ball_utils import BT
 from utils.ball_tracker_tracknet import BallTrackerTN
-from utils.court_line_detector import CLD
+from utils.court_detector_robust import CourtDetectorRobust
 from utils.homography import homography
 from utils.court_zones import CourtZones
 from utils.court_visualizer import CourtVisualizer
@@ -25,8 +25,8 @@ def main():
     # Use TrackNet for ball detection (3-frame context, specialized for broadcast tennis)
     ball_tracker = BallTrackerTN(model_path="tracknet_weights.pt")
 
-    court_model_path = "keypoints_model_50.pth"
-    court_line_detector = CLD(court_model_path)
+    court_model_path = "court_detection_weights.pth"
+    court_line_detector = CourtDetectorRobust(court_model_path)
 
     # --- Per-frame keypoint detection ---
     # Predict court keypoints every KEYPOINT_INTERVAL frames to handle
