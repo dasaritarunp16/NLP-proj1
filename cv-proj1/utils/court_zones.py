@@ -72,19 +72,30 @@ class CourtZones:
         if rx_c > 9.60:
             return "right_alley"
 
-        # Deuce/Ad flips between near and far court:
-        #   Far court (from far player's view): deuce = low x (left in broadcast)
-        #   Near court (from near player's view): deuce = high x (right in broadcast)
+        # Deuce/Middle/Ad — middle zone is +/- 1m from center (4.485 to 6.485)
+        CENTER_X = 5.485
+        MIDDLE_HALF = 1.0  # +/- 1m from center
+
         if ry_c < 11.885:
-            # Far court
-            side = "deuce" if rx_c < 5.485 else "ad"
+            # Far court: deuce = low x, ad = high x
+            if CENTER_X - MIDDLE_HALF <= rx_c <= CENTER_X + MIDDLE_HALF:
+                side = "middle"
+            elif rx_c < CENTER_X:
+                side = "deuce"
+            else:
+                side = "ad"
             if ry_c < 5.485:
                 return f"far_{side}_backcourt"
             else:
                 return f"far_{side}_service_box"
         else:
-            # Near court
-            side = "deuce" if rx_c >= 5.485 else "ad"
+            # Near court: deuce = high x, ad = low x
+            if CENTER_X - MIDDLE_HALF <= rx_c <= CENTER_X + MIDDLE_HALF:
+                side = "middle"
+            elif rx_c >= CENTER_X:
+                side = "deuce"
+            else:
+                side = "ad"
             if ry_c < 18.285:
                 return f"near_{side}_service_box"
             else:
