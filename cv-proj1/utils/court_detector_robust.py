@@ -19,9 +19,23 @@ class CourtDetectorRobust:
             self.device = torch.device(device)
 
         self.model = BallTrackerNet(in_channels=3, out_channels=15)
-        self.model.load_state_dict(
-            torch.load(model_path, map_location=self.device)
-        )
+
+        # Handle both raw state_dict and full checkpoint formats
+        checkpoint = torch.load(model_path, map_location=self.device, weights_only=False)
+        if isinstance(checkpoint, dict):
+            # Full training checkpoint — extract just the model weights
+            if 'model_state_dict' in checkpoint:
+                state_dict = checkpoint['model_state_dict']
+            elif 'state_dict' in checkpoint:
+                state_dict = checkpoint['state_dict']
+            elif 'model' in checkpoint:
+                state_dict = checkpoint['model']
+            else:
+                # Assume the dict itself is the state_dict
+                state_dict = checkpoint
+        else:
+            state_dict = checkpoint
+        self.model.load_state_dict(state_dict)
         self.model.to(self.device)
         self.model.eval()
         self.width = 640
