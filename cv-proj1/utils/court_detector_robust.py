@@ -62,10 +62,10 @@ class CourtDetectorRobust:
         # argmax across channels to get per-pixel keypoint label
         keypoint_map = output.argmax(dim=1).squeeze(0).cpu().numpy().astype(np.uint8)
 
-        keypoints = np.zeros(28)  # 14 keypoints × 2 coords
+        # Extract (x, y) for each of 14 channels from heatmap
+        raw_kp = np.zeros((14, 2))  # [channel][x, y]
 
         for k in range(14):  # skip channel 14 (center point)
-            # Create binary mask for this keypoint
             mask = np.zeros_like(keypoint_map)
             mask[keypoint_map == k] = 255
 
@@ -76,18 +76,51 @@ class CourtDetectorRobust:
 
             if circles is not None and len(circles[0]) > 0:
                 x, y, _ = circles[0][0]
-                # Scale from 640×360 back to original resolution
-                keypoints[k * 2] = x * (orig_w / self.width)
-                keypoints[k * 2 + 1] = y * (orig_h / self.height)
+                raw_kp[k] = [x * (orig_w / self.width), y * (orig_h / self.height)]
             else:
-                # Fallback: use center of mass of the mask
                 coords = np.where(mask > 0)
                 if len(coords[0]) > 0:
                     y_mean = np.mean(coords[0])
                     x_mean = np.mean(coords[1])
-                    keypoints[k * 2] = x_mean * (orig_w / self.width)
-                    keypoints[k * 2 + 1] = y_mean * (orig_h / self.height)
+                    raw_kp[k] = [x_mean * (orig_w / self.width), y_mean * (orig_h / self.height)]
 
+        # --- Remap keypoint ordering ---
+        # TennisCourtDetector uses clockwise corners: 0=TL, 1=TR, 2=BR, 3=BL
+        # Our system uses: 0=TL, 1=TR, 2=BL, 3=BR
+        # So we swap channels 2 and 3.
+        kp = np.zeros((14, 2))
+        kp[0] = raw_kp[0]   # far left doubles
+        kp[1] = raw_kp[1]   # far right doubles
+        kp[2] = raw_kp[3]   # near left doubles  (model's ch 3 = BL)
+        kp[3] = raw_kp[2]   # near right doubles (model's ch 2 = BR)
+        kp[4:] = raw_kp[4:]  # channels 4-13 match
+
+        # --- Sanity check & fallback for near-court doubles corners ---
+        # kp[2] (near left doubles) should be LEFT of center
+        # kp[3] (near right doubles) should be RIGHT of center
+        center_x = orig_w / 2.0
+
+        if kp[2][0] == 0 or kp[2][0] > center_x:
+            # kp[2] missing or on wrong side — estimate from kp[5] (near left singles)
+            # Doubles sideline is further out than singles by the alley width
+            if kp[5][0] > 0 and kp[4][0] > 0 and kp[0][0] > 0:
+                # Use the ratio: kp0/kp4 (far doubles/singles offset) to estimate near doubles
+                alley_offset = kp[4][0] - kp[0][0]  # pixel distance of far alley
+                kp[2] = [kp[5][0] - alley_offset, kp[5][1]]
+            elif kp[5][0] > 0:
+                # Rough estimate: doubles corner slightly left of singles
+                kp[2] = [kp[5][0] * 0.85, kp[5][1]]
+
+        if kp[3][0] == 0 or kp[3][0] < center_x:
+            # kp[3] missing or on wrong side — estimate from kp[7] (near right singles)
+            if kp[7][0] > 0 and kp[6][0] > 0 and kp[1][0] > 0:
+                alley_offset = kp[1][0] - kp[6][0]
+                kp[3] = [kp[7][0] + alley_offset, kp[7][1]]
+            elif kp[7][0] > 0:
+                kp[3] = [kp[7][0] * 1.15, kp[7][1]]
+
+        # Flatten to 28-value array
+        keypoints = kp.flatten()
         return keypoints
 
     def draw_keypoints(self, image, keypoints):
