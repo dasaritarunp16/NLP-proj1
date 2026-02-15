@@ -1,4 +1,8 @@
 
+import cv2
+import numpy as np
+import matplotlib.pyplot as plt
+
 from utils.video import read, save
 from utils.player_utils import PT
 from utils.ball_utils import BT
@@ -80,10 +84,6 @@ def main():
     print(f"Type: {type(court_keypoints_r[0])}")
     print(f"Shape : {court_keypoints_r.shape}")
     print(f"Content: \n{court_keypoints_r}")
-
-    import matplotlib.pyplot as plt
-    import cv2
-    import numpy as np
 
     court_keypoints_reshaped = court_keypoints.reshape(-1, 2)
 
