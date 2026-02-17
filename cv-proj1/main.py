@@ -15,7 +15,7 @@ from utils.court_visualizer import CourtVisualizer
 
 def main():
     input = "test_video8.mp4"
-    vid_frames = read(input, start_time=0)
+    vid_frames = read(input, start_time=19)
 
     if len(vid_frames) == 0:
         print(f"ERROR: No frames read from '{input}' at start_time=25s.")
