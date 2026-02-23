@@ -18,29 +18,23 @@ def main():
     vid_frames = read(input, start_time=25)  # start at 0:25
 
     if len(vid_frames) == 0:
-        print(f"ERROR: No frames read from '{input}' at start_time=25s.")
-        print("Check that the video file exists and is longer than 25 seconds.")
+        print(f"ERROR: No frames read from '{input}'.")
         return
 
     Player_tracker = PT(model = "yolo12n.pt")
-
     p_detect = Player_tracker.detect_frames(vid_frames)
 
-    # Use TrackNet for ball detection (3-frame context, specialized for broadcast tennis)
     ball_tracker = BallTrackerTN(model_path="tracknet_weights.pt")
 
-    court_model_path = "court_detection_weights.pth"
-    court_line_detector = CourtDetectorRobust(court_model_path)
+    court_line_detector = CourtDetectorRobust("court_detection_weights.pth")
 
-    # --- Per-frame keypoint detection ---
-    # Predict court keypoints every KEYPOINT_INTERVAL frames to handle
-    # camera pans, zooms, and angle changes mid-rally.
-    KEYPOINT_INTERVAL = 30  # predict every 30 frames (~1 second at 30fps)
-    keypoint_frames = {}    # {frame_idx: keypoints_reshaped}
-    homography_frames = {}  # {frame_idx: H_matrix}
-    boundary_frames = {}    # {frame_idx: court_boundary_polygon}
+    # predict court keypoints periodically to handle camera movement
+    KEYPOINT_INTERVAL = 30
+    keypoint_frames = {}
+    homography_frames = {}
+    boundary_frames = {}
 
-    print(f"Running per-frame keypoint detection (every {KEYPOINT_INTERVAL} frames)...")
+    print(f"Running keypoint detection (every {KEYPOINT_INTERVAL} frames)...")
     for f_idx in range(0, len(vid_frames), KEYPOINT_INTERVAL):
         kp = court_line_detector.predict(vid_frames[f_idx])
         kp_r = kp.reshape(-1, 2)
@@ -53,7 +47,6 @@ def main():
         boundary_frames[f_idx] = boundary
     print(f"  Keypoints predicted on {len(keypoint_frames)} frames")
 
-    # Helper: get the nearest keypoint prediction for any frame
     keypoint_indices = sorted(keypoint_frames.keys())
     def get_nearest_kp_idx(frame_idx):
         best = keypoint_indices[0]
@@ -62,24 +55,19 @@ def main():
                 best = ki
         return best
 
-    # Use first frame's keypoints for visualization and zone setup
     court_keypoints = court_line_detector.predict(vid_frames[0])
     court_keypoints_r = court_keypoints.reshape(-1,2)
-
-
 
     b_detect = ball_tracker.detect_frames(vid_frames)
 
     o_vid_frames = Player_tracker.draw_boxes(vid_frames, p_detect)
     o_vid_frames = ball_tracker.draw_boxes(o_vid_frames, b_detect)
-    # Draw per-frame keypoints (each frame uses its nearest keypoint prediction)
     for f_idx in range(len(o_vid_frames)):
         nearest_kp = get_nearest_kp_idx(f_idx)
         kp_flat = keypoint_frames[nearest_kp].flatten()
         o_vid_frames[f_idx] = court_line_detector.draw_keypoints(o_vid_frames[f_idx], kp_flat)
 
     save(o_vid_frames, "output_video/output.mp4")
-
 
     print(f"Type: {type(court_keypoints_r[0])}")
     print(f"Shape : {court_keypoints_r.shape}")
@@ -90,13 +78,10 @@ def main():
     frame_with_kp = vid_frames[0].copy()
 
     for i in range(len(court_keypoints_reshaped)):
-
         x = int(float(court_keypoints_reshaped[i, 0]))
         y = int(float(court_keypoints_reshaped[i, 1]))
 
-
         cv2.circle(frame_with_kp, (x, y), 8, (0, 255, 0), -1)
-
         cv2.putText(frame_with_kp, str(i), (x+10, y-10),
         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
 
@@ -105,26 +90,26 @@ def main():
         plt.title("Court Keypoints - Numbered")
         plt.show()
 
-    # Create court zones from first frame keypoints (for zone classification)
     court_zones = CourtZones(court_keypoints_reshaped)
 
-    # Build list of ball positions in real-world coords per frame
+    # build ball trajectory in real-world coords
     ball_trajectory = []
     frames_with_ball = 0
     frames_out_of_court = 0
     frames_outside_pixel_court = 0
     frames_static = 0
-    STATIC_THRESHOLD = 5     # pixels - if ball moves less than this, it's "static"
-    STATIC_MAX_COUNT = 8     # consecutive static frames before we start filtering
+    STATIC_THRESHOLD = 5
+    STATIC_MAX_COUNT = 8
     prev_px, prev_py = None, None
     static_count = 0
+
     for frame_count, balls in enumerate(b_detect):
         if 1 in balls:
             frames_with_ball += 1
             box = balls[1]
             x, y = ball_tracker.ball_center(box)
 
-            # Filter: reject static false positives (scoreboard, ball basket, etc.)
+            # filter static false positives
             if prev_px is not None:
                 dist = ((x - prev_px)**2 + (y - prev_py)**2)**0.5
                 if dist < STATIC_THRESHOLD:
@@ -136,12 +121,10 @@ def main():
                 frames_static += 1
                 continue
 
-            # Use nearest per-frame keypoint prediction for this frame
             nearest_kp = get_nearest_kp_idx(frame_count)
             court_boundary = boundary_frames[nearest_kp]
             H_points = homography_frames[nearest_kp]
 
-            # Filter: ball pixel position must be inside the court polygon
             if cv2.pointPolygonTest(court_boundary, (float(x), float(y)), False) < 0:
                 frames_outside_pixel_court += 1
                 continue
@@ -163,23 +146,17 @@ def main():
 
     print(f"\n--- DEBUG ---")
     print(f"Total frames: {len(b_detect)}")
-    print(f"Frames with ball detected: {frames_with_ball}")
-    print(f"Frames static (false positive): {frames_static}")
-    print(f"Frames outside pixel court: {frames_outside_pixel_court}")
-    print(f"Frames out of real court (filtered): {frames_out_of_court}")
-    print(f"Frames in court (ball_trajectory before sampling): {len(ball_trajectory)}")
-
-    # No sampling needed — TrackNet provides reliable detections
+    print(f"Frames with ball: {frames_with_ball}")
+    print(f"Static: {frames_static}")
+    print(f"Outside pixel court: {frames_outside_pixel_court}")
+    print(f"Out of real court: {frames_out_of_court}")
     print(f"Trajectory points: {len(ball_trajectory)}")
-
     if len(ball_trajectory) > 0:
-        print(f"First detection: frame {ball_trajectory[0]['frame']} ({ball_trajectory[0]['rx']:.2f}, {ball_trajectory[0]['ry']:.2f})")
-        print(f"Last detection: frame {ball_trajectory[-1]['frame']} ({ball_trajectory[-1]['rx']:.2f}, {ball_trajectory[-1]['ry']:.2f})")
+        print(f"First: frame {ball_trajectory[0]['frame']} ({ball_trajectory[0]['rx']:.2f}, {ball_trajectory[0]['ry']:.2f})")
+        print(f"Last: frame {ball_trajectory[-1]['frame']} ({ball_trajectory[-1]['rx']:.2f}, {ball_trajectory[-1]['ry']:.2f})")
     print(f"--- END DEBUG ---\n")
 
-    # --- Build player trajectories in real-world coords ---
-    # Use foot position (bottom-center of bbox) + homography
-    # player_positions[frame_idx] = {track_id: (rx, ry), ...}
+    # build player positions in real-world coords (foot position)
     player_positions = {}
     for frame_idx, players in enumerate(p_detect):
         player_positions[frame_idx] = {}
@@ -189,8 +166,7 @@ def main():
         for track_id, box in players.items():
             x1, y1, x2, y2 = box
             foot_x = (x1 + x2) / 2
-            foot_y = y2  # bottom of bounding box = feet
-            # Only use players inside the court polygon
+            foot_y = y2
             if cv2.pointPolygonTest(court_boundary, (float(foot_x), float(foot_y)), False) < 0:
                 continue
             foot_frame = np.array([[[foot_x, foot_y]]], dtype=np.float32)
@@ -199,8 +175,7 @@ def main():
             if ball_tracker.balls_in_court(rx, ry):
                 player_positions[frame_idx][track_id] = (rx, ry)
 
-    # Identify near player and far player by average y-position
-    # Near player: avg ry > 11.885 (near half), Far player: avg ry < 11.885
+    # identify near/far players by avg y position
     player_avg_y = {}
     player_counts = {}
     for frame_idx, players in player_positions.items():
@@ -211,7 +186,6 @@ def main():
             player_avg_y[track_id] += ry
             player_counts[track_id] += 1
 
-    # Pick the two most-seen players
     sorted_players = sorted(player_counts.keys(), key=lambda tid: player_counts[tid], reverse=True)
     near_player_id = None
     far_player_id = None
@@ -226,19 +200,16 @@ def main():
         print(f"Near player: ID {near_player_id} (avg y={player_avg_y[near_player_id]/player_counts[near_player_id]:.2f})")
         print(f"Far player: ID {far_player_id} (avg y={player_avg_y[far_player_id]/player_counts[far_player_id]:.2f})")
 
-    # --- Shot detection: 3-point trajectory per shot ---
-    # For each shot, capture: start (after last reversal), mid (a few frames in),
-    # and end (furthest y-point before next reversal).
-    # Only confirm a shot once the next direction change validates it.
-    MIN_Y_TRAVEL = 3.0        # minimum y-distance between consecutive shots
-    REVERSAL_THRESHOLD = 2.0  # ball must move this far back before we confirm reversal
-    MIN_PASS_POINTS = 8       # minimum trajectory points for a pass to count as a real shot
-    MID_SKIP = 2              # frames to skip from start to capture mid-flight position
-    MAX_FRAME_GAP = 12        # if gap between consecutive detections exceeds this, force a pass break
+    # shot detection - track ball y extremes and detect reversals
+    MIN_Y_TRAVEL = 3.0
+    REVERSAL_THRESHOLD = 2.0
+    MIN_PASS_POINTS = 8
+    MID_SKIP = 2
+    MAX_FRAME_GAP = 12
 
     shot_landings = []
-    pending_shot = None       # held until next reversal confirms it
-    pass_start_idx = 0        # index where the current pass began
+    pending_shot = None
+    pass_start_idx = 0
 
     if len(ball_trajectory) >= 2:
         extreme_pt = ball_trajectory[0]
@@ -249,7 +220,7 @@ def main():
             pt = ball_trajectory[i]
             prev_pt = ball_trajectory[i - 1]
 
-            # Force a pass break if large frame gap (tracker lost the ball)
+            # force break on large frame gap (tracker lost the ball)
             if pt['frame'] - prev_pt['frame'] > MAX_FRAME_GAP:
                 pass_length = extreme_idx - pass_start_idx + 1
                 if pass_length >= MIN_PASS_POINTS:
@@ -262,12 +233,9 @@ def main():
                     end_pt = extreme_pt
                     end_zone = court_zones.classify_real(end_pt['rx'], end_pt['ry'])
                     pending_shot = {
-                        'start': start_pt,
-                        'mid': mid_pt,
-                        'end': end_pt,
-                        'zone': end_zone,
+                        'start': start_pt, 'mid': mid_pt,
+                        'end': end_pt, 'zone': end_zone,
                     }
-                # Reset pass — re-determine direction from this point
                 pass_start_idx = i
                 extreme_pt = pt
                 extreme_idx = i
@@ -282,27 +250,20 @@ def main():
                 elif extreme_pt['ry'] - pt['ry'] > REVERSAL_THRESHOLD:
                     pass_length = i - pass_start_idx + 1
                     if pass_length < MIN_PASS_POINTS:
-                        # Too short — not a real shot, just crosscourt wobble
-                        # Keep tracking in the same direction, don't reset
                         continue
 
-                    # Reversal detected — confirm the PREVIOUS pending shot
                     if pending_shot is not None:
                         if len(shot_landings) == 0 or abs(pending_shot['end']['ry'] - shot_landings[-1]['end']['ry']) >= MIN_Y_TRAVEL:
                             shot_landings.append(pending_shot)
 
-                    # Build 3-point shot: start, mid, end
                     start_pt = ball_trajectory[pass_start_idx]
                     mid_idx = min(pass_start_idx + MID_SKIP, extreme_idx)
                     mid_pt = ball_trajectory[mid_idx]
                     end_pt = extreme_pt
-
                     end_zone = court_zones.classify_real(end_pt['rx'], end_pt['ry'])
                     pending_shot = {
-                        'start': start_pt,
-                        'mid': mid_pt,
-                        'end': end_pt,
-                        'zone': end_zone,
+                        'start': start_pt, 'mid': mid_pt,
+                        'end': end_pt, 'zone': end_zone,
                     }
                     pass_start_idx = i
                     extreme_pt = pt
@@ -315,39 +276,31 @@ def main():
                 elif pt['ry'] - extreme_pt['ry'] > REVERSAL_THRESHOLD:
                     pass_length = i - pass_start_idx + 1
                     if pass_length < MIN_PASS_POINTS:
-                        # Too short — not a real shot, just crosscourt wobble
-                        # Keep tracking in the same direction, don't reset
                         continue
 
-                    # Reversal detected — confirm the PREVIOUS pending shot
                     if pending_shot is not None:
                         if len(shot_landings) == 0 or abs(pending_shot['end']['ry'] - shot_landings[-1]['end']['ry']) >= MIN_Y_TRAVEL:
                             shot_landings.append(pending_shot)
 
-                    # Build 3-point shot: start, mid, end
                     start_pt = ball_trajectory[pass_start_idx]
                     mid_idx = min(pass_start_idx + MID_SKIP, extreme_idx)
                     mid_pt = ball_trajectory[mid_idx]
                     end_pt = extreme_pt
-
                     end_zone = court_zones.classify_real(end_pt['rx'], end_pt['ry'])
                     pending_shot = {
-                        'start': start_pt,
-                        'mid': mid_pt,
-                        'end': end_pt,
-                        'zone': end_zone,
+                        'start': start_pt, 'mid': mid_pt,
+                        'end': end_pt, 'zone': end_zone,
                     }
                     pass_start_idx = i
                     extreme_pt = pt
                     extreme_idx = i
                     going_near = True
 
-    # Capture the last pending shot (confirmed by end of data)
+    # capture last pending + final in-progress pass
     if pending_shot is not None:
         if len(shot_landings) == 0 or abs(pending_shot['end']['ry'] - shot_landings[-1]['end']['ry']) >= MIN_Y_TRAVEL:
             shot_landings.append(pending_shot)
 
-    # Also capture the final in-progress pass (from last reversal to end of trajectory)
     if len(ball_trajectory) >= 2:
         start_pt = ball_trajectory[pass_start_idx]
         mid_idx = min(pass_start_idx + MID_SKIP, len(ball_trajectory) - 1)
@@ -355,53 +308,18 @@ def main():
         end_pt = extreme_pt
         end_zone = court_zones.classify_real(end_pt['rx'], end_pt['ry'])
         final_shot = {
-            'start': start_pt,
-            'mid': mid_pt,
-            'end': end_pt,
-            'zone': end_zone,
+            'start': start_pt, 'mid': mid_pt,
+            'end': end_pt, 'zone': end_zone,
         }
         if len(shot_landings) == 0 or abs(final_shot['end']['ry'] - shot_landings[-1]['end']['ry']) >= MIN_Y_TRAVEL:
             shot_landings.append(final_shot)
 
-    # --- Merge consecutive same-direction shots ---
-    # In tennis, every real shot changes direction. If two consecutive shots
-    # both go near→far (or both far→near), it's the same shot with a bounce
-    # in between. Merge them: keep first shot's start, last shot's end.
-    if len(shot_landings) >= 2:
-        merged = [shot_landings[0]]
-        for s in shot_landings[1:]:
-            prev = merged[-1]
-            prev_dir = prev['end']['ry'] - prev['start']['ry']  # positive=going near, negative=going far
-            curr_dir = s['end']['ry'] - s['start']['ry']
-
-            if (prev_dir > 0 and curr_dir > 0) or (prev_dir < 0 and curr_dir < 0):
-                # Same direction — merge: keep prev start, use curr end (more extreme)
-                # Recalculate mid as midpoint between start and new end
-                start_frame = prev['start']['frame']
-                end_frame = s['end']['frame']
-                # Find the trajectory point closest to the temporal midpoint
-                target_frame = (start_frame + end_frame) // 2
-                mid_pt = min(ball_trajectory, key=lambda p: abs(p['frame'] - target_frame))
-                end_zone = court_zones.classify_real(s['end']['rx'], s['end']['ry'])
-                merged[-1] = {
-                    'start': prev['start'],
-                    'mid': mid_pt,
-                    'end': s['end'],
-                    'zone': end_zone,
-                }
-            else:
-                merged.append(s)
-        shot_landings = merged
-
-    # --- Filter out shots that are too short (noise) ---
-    MIN_SHOT_FRAMES = 5  # shot must span at least this many video frames
-    shot_landings = [s for s in shot_landings
-                     if s['end']['frame'] - s['start']['frame'] >= MIN_SHOT_FRAMES]
-
-    # --- Second merge pass: filtering may have exposed new same-direction pairs ---
-    if len(shot_landings) >= 2:
-        merged = [shot_landings[0]]
-        for s in shot_landings[1:]:
+    # merge consecutive same-direction shots
+    def merge_same_dir(shots):
+        if len(shots) < 2:
+            return shots
+        merged = [shots[0]]
+        for s in shots[1:]:
             prev = merged[-1]
             prev_dir = prev['end']['ry'] - prev['start']['ry']
             curr_dir = s['end']['ry'] - s['start']['ry']
@@ -412,34 +330,39 @@ def main():
                 mid_pt = min(ball_trajectory, key=lambda p: abs(p['frame'] - target_frame))
                 end_zone = court_zones.classify_real(s['end']['rx'], s['end']['ry'])
                 merged[-1] = {
-                    'start': prev['start'],
-                    'mid': mid_pt,
-                    'end': s['end'],
-                    'zone': end_zone,
+                    'start': prev['start'], 'mid': mid_pt,
+                    'end': s['end'], 'zone': end_zone,
                 }
             else:
                 merged.append(s)
-        shot_landings = merged
+        return merged
 
-    # --- Player-ball fusion: validate landing zones with receiving player position ---
-    # The receiving player runs to where the ball lands, so their foot position
-    # at the shot's end frame provides a second opinion on the landing zone.
-    PLAYER_SEARCH_WINDOW = 5  # search +/- frames around end frame for player position
-    BALL_WEIGHT = 0.6         # weight for ball position in fusion
-    PLAYER_WEIGHT = 0.4       # weight for player position in fusion
+    shot_landings = merge_same_dir(shot_landings)
+
+    # filter short shots
+    MIN_SHOT_FRAMES = 5
+    shot_landings = [s for s in shot_landings
+                     if s['end']['frame'] - s['start']['frame'] >= MIN_SHOT_FRAMES]
+
+    # second merge pass after filtering
+    shot_landings = merge_same_dir(shot_landings)
+
+    # player-ball fusion to validate landing zones
+    PLAYER_SEARCH_WINDOW = 5
+    BALL_WEIGHT = 0.6
+    PLAYER_WEIGHT = 0.4
+    NET_Y = 11.885
 
     for s in shot_landings:
         end_frame = s['end']['frame']
         ball_going_far = s['end']['ry'] < s['start']['ry']
 
-        # Determine receiving player: far player if ball going far, near player if going near
         receiver_id = far_player_id if ball_going_far else near_player_id
         if receiver_id is None:
             s['player_zone'] = None
             s['fused_zone'] = s['zone']
             continue
 
-        # Find receiver's position near the end frame (search a window)
         receiver_pos = None
         for offset in range(0, PLAYER_SEARCH_WINDOW + 1):
             for f in [end_frame + offset, end_frame - offset]:
@@ -459,21 +382,14 @@ def main():
         s['player_zone'] = player_zone
         s['player_pos'] = receiver_pos
 
-        # Fuse: mandatory rule + fallback
-        # Rule 1: If the player is closer to the net than the ball, the player
-        #         intercepted the ball there — use the player's position entirely.
-        # Rule 2: Otherwise, player informs x (deuce/ad), ball informs y (depth).
-        NET_Y = 11.885
         ball_zone = s['zone']
         player_closer_to_net = abs(p_ry - NET_Y) < abs(s['end']['ry'] - NET_Y)
 
         if ball_zone == player_zone:
             s['fused_zone'] = ball_zone
         elif player_closer_to_net:
-            # Player is closer to net than ball — they got to the ball here
             s['fused_zone'] = player_zone
         else:
-            # Player is deeper — use player's x (deuce/ad) + ball's y (depth)
             fused_rx = BALL_WEIGHT * s['end']['rx'] + PLAYER_WEIGHT * p_rx
             fused_ry = s['end']['ry']
             s['fused_zone'] = court_zones.classify_real(fused_rx, fused_ry)
@@ -491,7 +407,6 @@ def main():
             print(f"    Player - ({s['player_pos'][0]:.2f}, {s['player_pos'][1]:.2f}) -> {s['player_zone']}")
         print(f"    FINAL  -> {s['fused_zone']}")
 
-    # Build shot_landings in the format plot_shots expects (using end point + fused zone)
     shot_landings_for_viz = []
     for s in shot_landings:
         shot_landings_for_viz.append({
@@ -501,7 +416,6 @@ def main():
             'zone': s['fused_zone'],
         })
 
-    # Visualize ball trajectory on 2D court
     visualizer = CourtVisualizer()
     visualizer.plot_trajectory(ball_trajectory)
     visualizer.plot_shots(ball_trajectory, shot_landings_for_viz)
