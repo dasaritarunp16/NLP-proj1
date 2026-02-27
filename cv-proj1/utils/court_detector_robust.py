@@ -33,11 +33,9 @@ class CourtDetector:
 
     def predict(self, image):
         oh, ow = image.shape[:2]
-
         resized = cv2.resize(image, (self.w, self.h))
         inp = resized.astype(np.float32) / 255.0
-        inp = torch.from_numpy(inp).permute(2, 0, 1).unsqueeze(0)
-        inp = inp.to(self.device)
+        inp = torch.from_numpy(inp).permute(2, 0, 1).unsqueeze(0).to(self.device)
 
         with torch.no_grad():
             out = self.model(inp)
@@ -48,12 +46,8 @@ class CourtDetector:
         for k in range(14):
             mask = np.zeros_like(kp_map)
             mask[kp_map == k] = 255
-
-            circles = cv2.HoughCircles(
-                mask, cv2.HOUGH_GRADIENT, dp=1, minDist=20,
-                param1=50, param2=2, minRadius=10, maxRadius=25
-            )
-
+            circles = cv2.HoughCircles(mask, cv2.HOUGH_GRADIENT, dp=1, minDist=20,
+                                       param1=50, param2=2, minRadius=10, maxRadius=25)
             if circles is not None and len(circles[0]) > 0:
                 x, y, _ = circles[0][0]
                 raw[k] = [x * (ow / self.w), y * (oh / self.h)]
@@ -63,7 +57,7 @@ class CourtDetector:
                     raw[k] = [np.mean(coords[1]) * (ow / self.w),
                               np.mean(coords[0]) * (oh / self.h)]
 
-        # remap clockwise corners to our ordering
+        # swap corners 2 and 3 (model outputs clockwise, we need TL TR BL BR)
         kp = np.zeros((14, 2))
         kp[0] = raw[0]
         kp[1] = raw[1]
@@ -71,7 +65,7 @@ class CourtDetector:
         kp[3] = raw[2]
         kp[4:] = raw[4:]
 
-        # fix missing near-court doubles corners
+        # if near-court doubles corners are missing or on the wrong side, estimate them
         cx = ow / 2.0
         if kp[2][0] == 0 or kp[2][0] > cx:
             if kp[5][0] > 0 and kp[4][0] > 0 and kp[0][0] > 0:
